@@ -27,6 +27,7 @@ public static class ManagedGlyphThemes
 
     private sealed class State
     {
+        public State() { }
         public int Version { get; set; } = 1;
         public string Serial { get; set; } = "";
         public string TextureRoot { get; set; } = "";
@@ -118,7 +119,7 @@ public static class ManagedGlyphThemes
         var old = Read(c);
         var incoming = Pack(packFolder, c, out var name);
         int add = 0, replace = 0, remove = 0, same = 0, adopt = 0, conflict = 0, modified = 0;
-        foreach (var existing in old?.Files.Keys ?? Array.Empty<string>())
+        foreach (var existing in (IEnumerable<string>?)old?.Files.Keys ?? Array.Empty<string>())
         {
             if (!OwnedUnchanged(c, old!, existing)) modified++;
             if (!incoming.ContainsKey(existing)) remove++;
