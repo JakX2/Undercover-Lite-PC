@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using UndercoverLite.Core;
 
@@ -19,20 +20,39 @@ public sealed class MainForm : Form
     private readonly CheckBox _fastBoot = new();
     private readonly CheckBox _hideEmulator = new();
     private readonly CheckBox _isolateData = new();
+    private readonly CheckBox _hotkeyEnabled = new();
+    private readonly Button _sessionButton = new();
+    private readonly GameSessionGate _sessionGate = new();
+    private readonly System.Windows.Forms.Timer _sessionTimer = new() { Interval = 850 };
+    private Process? _gameProcess;
+    private CompanionMenuForm? _companionMenu;
+    private bool _hotkeyRegistered;
+    private const int HotkeyId = 0x4C50;
+    private const int WmHotkey = 0x0312;
+    private const uint CtrlShiftNoRepeat = 0x0002 | 0x0004 | 0x4000;
+    private const uint VkF10 = 0x79;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr window, int id);
+
     private readonly Label _status = new();
     private readonly Button _launchButton = new();
 
     public MainForm()
     {
-        Text = "Undercover Lite PC | Prototype 0.2";
-        MinimumSize = new Size(780, 620);
-        Size = new Size(920, 680);
+        Text = "Undercover Lite PC | Prototype 0.3";
+        MinimumSize = new Size(800, 730);
+        Size = new Size(980, 765);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = BackgroundColor;
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10F);
         AutoScaleMode = AutoScaleMode.Dpi;
         BuildUi();
+        _sessionTimer.Tick += (_, _) => PollSession();
         LoadSettings();
     }
 
@@ -49,7 +69,7 @@ public sealed class MainForm : Form
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 190));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 168));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 206));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(layout);
@@ -60,7 +80,7 @@ public sealed class MainForm : Form
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         header.Controls.Add(NewLabel("UNDERCOVER LITE PC", 22, AccentColor, bold: true), 0, 0);
         header.Controls.Add(NewLabel("An emulation-backed PC launcher for Need for Speed Undercover (PS2)", 10, Color.White), 0, 1);
-        header.Controls.Add(NewLabel("Prototype 0.2  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
+        header.Controls.Add(NewLabel("Prototype 0.3  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
         layout.Controls.Add(header, 0, 0);
 
         var paths = NewCard();
@@ -77,7 +97,7 @@ public sealed class MainForm : Form
         layout.Controls.Add(paths, 0, 1);
 
         var options = NewCard();
-        var optionTable = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Padding = new Padding(18, 12, 18, 8) };
+        var optionTable = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4, Padding = new Padding(18, 12, 18, 8) };
         optionTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         optionTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         optionTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
@@ -92,14 +112,19 @@ public sealed class MainForm : Form
         optionTable.Controls.Add(_fastBoot, 1, 1);
         optionTable.Controls.Add(_hideEmulator, 0, 2);
         optionTable.Controls.Add(_isolateData, 1, 2);
+        optionTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        ConfigureCheck(_hotkeyEnabled, "Session companion hotkey (Ctrl+Shift+F10)");
+        optionTable.Controls.Add(_hotkeyEnabled, 0, 3);
+        optionTable.SetColumnSpan(_hotkeyEnabled, 2);
         options.Controls.Add(optionTable);
         layout.Controls.Add(options, 0, 2);
 
-        var controls = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Padding = new Padding(0, 12, 0, 9) };
+        var controls = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 5, RowCount = 1, Padding = new Padding(0, 12, 0, 9) };
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 19));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 12));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 21));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 19));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 19));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36));
         var setupButton = NewButton("Configure PCSX2", secondary: true);
         setupButton.Click += (_, _) => OpenPcsx2Setup();
         var verifyButton = NewButton("Check image", secondary: true);
@@ -112,7 +137,12 @@ public sealed class MainForm : Form
         controls.Controls.Add(setupButton, 0, 0);
         controls.Controls.Add(verifyButton, 1, 0);
         controls.Controls.Add(saveButton, 2, 0);
-        controls.Controls.Add(_launchButton, 3, 0);
+        _sessionButton.Text = "Session menu";
+        StyleButton(_sessionButton, secondary: true);
+        _sessionButton.Enabled = false;
+        _sessionButton.Click += (_, _) => ToggleCompanionMenu();
+        controls.Controls.Add(_sessionButton, 3, 0);
+        controls.Controls.Add(_launchButton, 4, 0);
         layout.Controls.Add(controls, 0, 3);
 
         var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
@@ -135,7 +165,7 @@ public sealed class MainForm : Form
         };
         inputHelp.Click += (_, _) => { using var guide = new InputGuideForm(); guide.ShowDialog(this); };
         footer.Controls.Add(inputHelp, 0, 1);
-        footer.Controls.Add(NewLabel("No PS2 game, BIOS or emulator files are included. This is not yet an in-game PC menu.", 9, MutedColor), 0, 2);
+        footer.Controls.Add(NewLabel("Session menu: Ctrl+Shift+F10 when running (if enabled). External Windows overlay, not a PS2 patch.", 9, MutedColor), 0, 2);
         layout.Controls.Add(footer, 0, 4);
     }
 
@@ -231,6 +261,7 @@ public sealed class MainForm : Form
         FastBoot = _fastBoot.Checked,
         HideEmulatorWindow = _hideEmulator.Checked,
         IsolatePcsx2Data = _isolateData.Checked,
+        EnableCompanionHotkey = _hotkeyEnabled.Checked,
     };
 
     private void LoadSettings()
@@ -249,6 +280,7 @@ public sealed class MainForm : Form
             _fastBoot.Checked = s.FastBoot;
             _hideEmulator.Checked = s.HideEmulatorWindow;
             _isolateData.Checked = s.IsolatePcsx2Data;
+            _hotkeyEnabled.Checked = s.EnableCompanionHotkey;
             _status.Text = detected is null
                 ? "Ready. Select PCSX2 and your PS2 image, then configure your controller."
                 : "Found PCSX2 beside the launcher. Configure BIOS and input before launching.";
@@ -261,6 +293,7 @@ public sealed class MainForm : Form
             _fastBoot.Checked = true;
             _hideEmulator.Checked = true;
             _isolateData.Checked = true;
+            _hotkeyEnabled.Checked = true;
         }
     }
 
@@ -312,6 +345,11 @@ public sealed class MainForm : Form
 
     private void LaunchGame()
     {
+        if (_sessionGate.IsRunning)
+        {
+            _status.Text = "A game is already running; a second launch was blocked.";
+            return;
+        }
         try
         {
             var config = ReadUi();
@@ -326,13 +364,147 @@ public sealed class MainForm : Form
                 if (choice != DialogResult.Yes) return;
             }
             if (!SaveSettings(showMessage: false)) return;
-            using var process = Pcsx2Launcher.Start(config, _store.Pcsx2DataDirectory, launchingGame: true);
-            _status.Text = "Undercover launched through PCSX2. Close the game normally when finished.";
+            if (_sessionGate.IsRunning)
+            {
+                _status.Text = "A game session is already running. Use Session menu to manage it.";
+                return;
+            }
+            _gameProcess = Pcsx2Launcher.Start(config, _store.Pcsx2DataDirectory, launchingGame: true);
+            if (!_sessionGate.TryEnter())
+                throw new InvalidOperationException("A session was started twice unexpectedly.");
+            _launchButton.Enabled = false;
+            _sessionButton.Enabled = true;
+            _sessionTimer.Start();
+            var hotkey = config.EnableCompanionHotkey ? TryRegisterCompanionHotkey() : false;
+            _status.Text = hotkey
+                ? "Undercover running. Ctrl+Shift+F10 opens the companion menu."
+                : "Undercover running. Use Session menu here (global hotkey disabled or unavailable).";
+            WindowState = FormWindowState.Minimized;
         }
         catch (Exception ex)
         {
             ShowError("Could not start Undercover. Check your PCSX2, BIOS and game image setup.", ex);
         }
+    }
+
+
+    private bool TryRegisterCompanionHotkey()
+    {
+        if (_hotkeyRegistered) return true;
+        _hotkeyRegistered = RegisterHotKey(Handle, HotkeyId, CtrlShiftNoRepeat, VkF10);
+        return _hotkeyRegistered;
+    }
+
+    private void StopCompanionHotkey()
+    {
+        if (!_hotkeyRegistered) return;
+        UnregisterHotKey(Handle, HotkeyId);
+        _hotkeyRegistered = false;
+    }
+
+    protected override void WndProc(ref Message message)
+    {
+        if (message.Msg == WmHotkey && message.WParam.ToInt32() == HotkeyId)
+        {
+            ToggleCompanionMenu();
+            return;
+        }
+        base.WndProc(ref message);
+    }
+
+    private void ToggleCompanionMenu()
+    {
+        PollSession();
+        if (!_sessionGate.IsRunning) return;
+        if (_companionMenu is { IsDisposed: false })
+        {
+            _companionMenu.Close();
+            return;
+        }
+        _companionMenu = new CompanionMenuForm(ReadUi(), SaveNextLaunchOptions, RequestGracefulExit);
+        _companionMenu.FormClosed += (_, _) => _companionMenu = null;
+        _companionMenu.Show();
+        _companionMenu.Activate();
+    }
+
+    private void SaveNextLaunchOptions(bool fullscreen, bool fastBoot, bool hideEmulator)
+    {
+        _fullscreen.Checked = fullscreen;
+        _fastBoot.Checked = fastBoot;
+        _hideEmulator.Checked = hideEmulator;
+        if (SaveSettings(showMessage: false))
+            _status.Text = "Companion preferences saved. They take effect on the NEXT launch.";
+    }
+
+    private void RequestGracefulExit()
+    {
+        if (!_sessionGate.IsRunning || _gameProcess is null) return;
+        try
+        {
+            if (_gameProcess.HasExited)
+            {
+                PollSession();
+                return;
+            }
+            if (_gameProcess.CloseMainWindow())
+                _status.Text = "Asked PCSX2 to close. It may ask you to confirm in its own window.";
+            else
+                _status.Text = "PCSX2 has no closable main window. Exit through its normal game/window controls.";
+        }
+        catch (InvalidOperationException)
+        {
+            PollSession();
+        }
+    }
+
+    private void PollSession()
+    {
+        if (!_sessionGate.IsRunning || _gameProcess is null) return;
+        bool exited;
+        try { exited = _gameProcess.HasExited; }
+        catch (InvalidOperationException) { exited = true; }
+        if (!exited) return;
+        _sessionTimer.Stop();
+        StopCompanionHotkey();
+        _companionMenu?.Close();
+        _companionMenu = null;
+        _gameProcess.Dispose();
+        _gameProcess = null;
+        _sessionGate.Release();
+        _launchButton.Enabled = true;
+        _sessionButton.Enabled = false;
+        _status.Text = "PCSX2 session ended. Ready for another launch.";
+        if (WindowState == FormWindowState.Minimized)
+        {
+            WindowState = FormWindowState.Normal;
+            Activate();
+        }
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (_sessionGate.IsRunning && e.CloseReason == CloseReason.UserClosing)
+        {
+            var answer = MessageBox.Show(this,
+                "Closing Undercover Lite disables the companion hotkey, but leaves PCSX2 running. Close the launcher?",
+                "Game still running", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+        base.OnFormClosing(e);
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _sessionTimer.Stop();
+        _sessionTimer.Dispose();
+        StopCompanionHotkey();
+        _companionMenu?.Close();
+        _gameProcess?.Dispose(); // Never terminates PCSX2.
+        base.OnFormClosed(e);
     }
 
     private void ShowError(string message, Exception ex)

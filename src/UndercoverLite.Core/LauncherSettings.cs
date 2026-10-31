@@ -9,4 +9,5 @@ public sealed class LauncherSettings
     public bool FastBoot { get; set; } = true;
     public bool HideEmulatorWindow { get; set; } = true;
     public bool IsolatePcsx2Data { get; set; } = true;
+    public bool EnableCompanionHotkey { get; set; } = true;
 }

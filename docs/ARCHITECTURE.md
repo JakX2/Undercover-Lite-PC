@@ -35,3 +35,11 @@ Official PCSX2 CLI: https://pcsx2.net/docs/advanced/cli/
 `Ps2DiscIdentifier` reads bounded ISO9660 directory entries from an uncompressed ISO and matches the PS2 `SYSTEM.CNF` `BOOT2` serial to a documented Undercover serial list. It never treats filenames as proof of identity, never modifies disc bytes, and does not decode CHD/CSO/ZSO/GZ. A foreign/unknown/unsupported image prompts the user to confirm before launch. The `InputGuideForm` documents manual PCSX2 controller mapping but does not mutate PCSX2 settings.
 
 See `docs/GAME_IDENTIFICATION.md` for supported serials, threat model, and limitations.
+
+## 0.3 session companion architecture
+
+A `GameSessionGate` maintains single-session state, while `MainForm` retains the returned `Process` object for the duration of the emulation session. A WinForms timer polls `Process.HasExited` (no memory hooks, no process scanning, no child-process injection). Only the executable started by this launcher counts as its active session. Once that process exits, its handle is disposed and the launcher becomes ready again.
+
+`MainForm` registers a Windows global **Ctrl+Shift+F10** hotkey only for a running session, if the user has not opted out and `RegisterHotKey` succeeds. Registration failures are nonfatal. The companion (`CompanionMenuForm`) is a regular **topmost Windows Form**, not a native in-game overlay, and may be hidden behind exclusive fullscreen PCSX2 presentation. The launcher keeps all process/game data separate from the companion. The panel can save **next-launch** preferences and request a graceful window close, but never kills the process or changes settings inside a running PS2 game.
+
+`OnFormClosing` warns that exiting the launcher disables the global hotkey without exiting PCSX2. No screenshots, OS keyboard hooks, emulator memory modifications, or game assets are collected. Further in-game options/menu integration is blocked pending research and Windows integration testing.

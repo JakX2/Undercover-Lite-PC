@@ -62,6 +62,14 @@ internal static class Program
             var defaults = store.Load();
             Check(defaults.Fullscreen && defaults.HideEmulatorWindow && defaults.IsolatePcsx2Data,
                 "first-run safe defaults");
+            Check(defaults.EnableCompanionHotkey, "companion hotkey defaults enabled for session only");
+            var sessionGate = new GameSessionGate();
+            Check(!sessionGate.IsRunning, "session starts idle");
+            Check(sessionGate.TryEnter() && sessionGate.IsRunning, "session guard enters running state");
+            Check(!sessionGate.TryEnter(), "session guard prevents duplicate game launches");
+            sessionGate.Release();
+            Check(!sessionGate.IsRunning && sessionGate.TryEnter(), "session guard allows a later new game");
+            sessionGate.Release();
             var exe = Path.Combine(temp, "PCSX2 with spaces", "pcsx2-qt.exe");
             var iso = Path.Combine(temp, "My Games", "Undercover PS2.iso");
             Directory.CreateDirectory(Path.GetDirectoryName(exe)!);
@@ -88,6 +96,7 @@ internal static class Program
             var loaded = store.Load();
             Check(loaded.Pcsx2Executable == exe && loaded.GameImage == iso, "settings round-trip paths with spaces");
             Check(loaded.FastBoot && loaded.Fullscreen, "settings round-trip switches");
+            Check(loaded.EnableCompanionHotkey, "hotkey preference round-trips");
             var startInfo = Pcsx2Launcher.CreateStartInfo(loaded, store.Pcsx2DataDirectory, launchingGame: true);
             var expected = new[] { "-datapath", Path.GetFullPath(store.Pcsx2DataDirectory), "-nogui", "-fullscreen", "-fastboot", "--", Path.GetFullPath(iso) };
             Check(startInfo.ArgumentList.SequenceEqual(expected), "CLI uses official PCSX2 Qt argument order");
@@ -102,6 +111,7 @@ internal static class Program
             loaded.FastBoot = false;
             loaded.HideEmulatorWindow = false;
             loaded.IsolatePcsx2Data = false;
+            loaded.EnableCompanionHotkey = false;
             var alternate = Pcsx2Launcher.CreateStartInfo(loaded, store.Pcsx2DataDirectory, launchingGame: true);
             Check(alternate.ArgumentList.SequenceEqual(new[] { "-batch", "-nofullscreen", "-slowboot", "--", Path.GetFullPath(iso) }),
                 "all launch preferences produce corresponding flags");
@@ -118,6 +128,7 @@ internal static class Program
             store.Save(loaded);
             Check(!File.Exists(store.FilePath + ".tmp"), "atomic save removes temporary file");
             Check(!store.Load().Fullscreen && !store.Load().IsolatePcsx2Data, "updated settings persisted");
+            Check(!store.Load().EnableCompanionHotkey, "opted-out companion hotkey remains disabled");
             // Verify disc identity without loading the game or relying on filenames.
             Check(Ps2DiscIdentifier.IdentifySystemCnf("BOOT2 = cdrom0:\\SLUS_218.01;1\n").IsUndercover,
                 "Undercover US BOOT2 serial recognized");
