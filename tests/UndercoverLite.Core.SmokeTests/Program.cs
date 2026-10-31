@@ -259,6 +259,86 @@ internal static class Program
                 "uncaptured space tile is not silently invented");
             Check(!File.Exists(Path.Combine(glyphData, "input-bindings.ini")),
                 "PC prompt suggestions do not edit PCSX2 input bindings");
+            // 0.6: manager only touches its own hashes, supports switching and explicit adoption.
+            var managedData = Path.Combine(temp, "managed-theme-data");
+            var themeA = Path.Combine(temp, "glyph-theme-A");
+            var themeB = Path.Combine(temp, "glyph-theme-B");
+            var sourceA = Path.Combine(themeA, "replacements");
+            var sourceB = Path.Combine(themeB, "replacements");
+            Directory.CreateDirectory(sourceA);
+            Directory.CreateDirectory(sourceB);
+            File.WriteAllText(Path.Combine(themeA, "glyph-pack.json"),
+                """{"schemaVersion":1,"id":"theme-a","name":"Theme A","gameSerial":"SLUS-21801","inputProfile":"keyboard"}""");
+            File.WriteAllText(Path.Combine(themeB, "glyph-pack.json"),
+                """{"schemaVersion":1,"id":"theme-b","name":"Theme B","gameSerial":"SLUS-21801","inputProfile":"keyboard"}""");
+            var sharedIcon = "1111111111111111-00001554.png";
+            var oldOnlyIcon = "2222222222222222-00001554.png";
+            var newOnlyIcon = "3333333333333333-00001554.png";
+            File.WriteAllBytes(Path.Combine(sourceA, sharedIcon), [1, 2, 3, 4]);
+            File.WriteAllBytes(Path.Combine(sourceA, oldOnlyIcon), [2, 4, 6]);
+            File.WriteAllBytes(Path.Combine(sourceB, sharedIcon), [9, 8, 7]);
+            File.WriteAllBytes(Path.Combine(sourceB, newOnlyIcon), [3, 6, 9]);
+            var themeRoot = GlyphPackManager.GetGameTextureDirectory(managedData, "SLUS-21801");
+            var actualReplacements = Path.Combine(themeRoot, "replacements");
+            var initialPlan = ManagedGlyphThemes.Preview(themeA, "SLUS-21801", managedData);
+            Check(initialPlan.CanApply && initialPlan.NewFiles == 2 && initialPlan.IdenticalUnmanaged == 0,
+                "theme preview counts new files without touching PCSX2 data");
+            Check(!Directory.Exists(managedData), "theme preview is read-only");
+            var activateA = ManagedGlyphThemes.Activate(themeA, "SLUS-21801", managedData);
+            Check(activateA.Changed == 2 && ManagedGlyphThemes.ActivePack("SLUS-21801", managedData) == "Theme A",
+                "first theme activation tracks installed glyphs");
+            Check(File.Exists(Path.Combine(actualReplacements, oldOnlyIcon)),
+                "first theme files appear under correct PCSX2 search root");
+            var planB = ManagedGlyphThemes.Preview(themeB, "SLUS-21801", managedData);
+            Check(planB.CanApply && planB.ReplaceManaged == 1 &&
+                planB.RemoveManaged == 1 && planB.NewFiles == 1,
+                "theme switch preview counts update, removal and new file");
+            var activateB = ManagedGlyphThemes.Activate(themeB, "SLUS-21801", managedData);
+            Check(activateB.Changed == 3 && ManagedGlyphThemes.ActivePack("SLUS-21801", managedData) == "Theme B",
+                "switch activates selected theme without external file changes");
+            Check(!File.Exists(Path.Combine(actualReplacements, oldOnlyIcon)) &&
+                File.ReadAllBytes(Path.Combine(actualReplacements, sharedIcon)).SequenceEqual(new byte[] { 9, 8, 7 }) &&
+                File.Exists(Path.Combine(actualReplacements, newOnlyIcon)),
+                "old icons are removed, shared icons replaced and new icons added");
+            var unrelatedIcon = "4444444444444444-00001554.png";
+            File.WriteAllBytes(Path.Combine(actualReplacements, unrelatedIcon), [55, 66, 77]);
+            File.WriteAllBytes(Path.Combine(actualReplacements, sharedIcon), [66, 55, 44]);
+            Check(ManagedGlyphThemes.Preview(themeA, "SLUS-21801", managedData).ModifiedManaged == 1,
+                "external modification of a tracked icon is reported");
+            ExpectThrows<IOException>(() => ManagedGlyphThemes.Deactivate("SLUS-21801", managedData),
+                "deactivation refuses to delete a modified managed glyph");
+            Check(File.ReadAllBytes(Path.Combine(actualReplacements, sharedIcon)).SequenceEqual(new byte[] { 66, 55, 44 }),
+                "modified external file remains unchanged after refusal");
+            File.WriteAllBytes(Path.Combine(actualReplacements, sharedIcon), [9, 8, 7]);
+            var disabledB = ManagedGlyphThemes.Deactivate("SLUS-21801", managedData);
+            Check(disabledB.Changed == 2 && ManagedGlyphThemes.ActivePack("SLUS-21801", managedData) is null,
+                "disable removes only tracked glyphs and clears active state");
+            Check(File.ReadAllBytes(Path.Combine(actualReplacements, unrelatedIcon)).SequenceEqual(new byte[] { 55, 66, 77 }),
+                "disable preserves unrelated replacement textures");
+            // Older Undercover Lite already installed W keycaps with no ownership state.
+            File.Copy(Path.Combine(sourceA, sharedIcon), Path.Combine(actualReplacements, sharedIcon));
+            var adoptPlan = ManagedGlyphThemes.Preview(themeA, "SLUS-21801", managedData);
+            Check(adoptPlan.IdenticalUnmanaged == 1 && adoptPlan.NewFiles == 1,
+                "existing byte-identical legacy glyph is identified as adoptable");
+            ExpectThrows<InvalidOperationException>(() => ManagedGlyphThemes.Activate(themeA, "SLUS-21801", managedData),
+                "legacy glyph cannot be silently adopted");
+            var adopted = ManagedGlyphThemes.Activate(themeA, "SLUS-21801", managedData,
+                adoptIdenticalUnmanaged: true);
+            Check(adopted.Changed == 1 && ManagedGlyphThemes.ActivePack("SLUS-21801", managedData) == "Theme A",
+                "explicit consent adopts identical old glyph and installs remaining icon");
+            ManagedGlyphThemes.Deactivate("SLUS-21801", managedData);
+            Check(!File.Exists(Path.Combine(actualReplacements, sharedIcon)) &&
+                File.Exists(Path.Combine(actualReplacements, unrelatedIcon)),
+                "adopted glyph can be disabled while unrelated artwork survives");
+            File.WriteAllBytes(Path.Combine(actualReplacements, sharedIcon), [4, 5, 6]);
+            Check(ManagedGlyphThemes.Preview(themeA, "SLUS-21801", managedData).ForeignConflicts == 1,
+                "nonidentical unmanaged glyph is a hard conflict");
+            ExpectThrows<IOException>(() => ManagedGlyphThemes.Activate(themeA, "SLUS-21801", managedData,
+                adoptIdenticalUnmanaged: true), "cannot overwrite a foreign differing glyph even with adoption");
+            Check(File.ReadAllBytes(Path.Combine(actualReplacements, sharedIcon)).SequenceEqual(new byte[] { 4, 5, 6 }),
+                "conflicting foreign icon bytes preserved");
+            Check(ManagedGlyphThemes.ActivePack("SLUS-21801", managedData) is null,
+                "foreign conflict does not leave behind an active managed state");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }

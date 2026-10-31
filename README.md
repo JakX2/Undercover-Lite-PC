@@ -129,3 +129,10 @@ PCSX2 command-line reference: [PCSX2 official CLI documentation](https://pcsx2.n
 A private 13-image PCSX2 texture dump was identified: ten **individual 32×32 prompt icons** (Cross, Circle, Triangle, Start, Select, L1, L2, R1, R2, R3), one **256×256 controller graphic**, and two graphics requiring more research. The standalone Square icon remains missing. The original game art is **not** committed.
 
 Original experimental 32×32 PC keycap replacement art and two candidate profiles were prepared as a **private proof of concept**, not a validated in-game mod. Region-specific hash compatibility, real controller bindings and dynamic menu-vs-driving prompts remain unverified. See [verified texture capture inventory](docs/VERIFIED_TEXTURE_CAPTURE_2026-10-31.md) for exact hashed filenames and testing scope.
+
+
+## Prototype 0.6: Safe switching of working keyboard glyph themes
+
+After the developer confirmed **Accept [W]** appeared inside Undercover on PCSX2 2.8.2, the next milestone adds **Activate / Switch** and **Disable managed glyphs** to the launcher. Undercover Lite now keeps SHA-256 ownership records for textures it installs, allows switching between the experimental menu-reference and driving-first packs, and blocks changes to unrelated or externally modified texture files. Existing icons installed by older Undercover Lite versions can be adopted **only when byte-identical and after explicit confirmation**. The game must be closed during changes; this is not real-time context switching.
+
+Read the [managed theme switching guide](docs/THEME_SWITCHING.md) before trying it with an existing theme. Gamepad bindings, menu-vs-driving prompt contexts, and the large controller diagram are still separate development tasks.
