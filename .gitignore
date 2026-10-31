@@ -36,3 +36,9 @@ sstates/
 *.rar
 *.exe
 *.dll
+
+# User-owned texture dumps and replacements: do not commit original game art
+**/dumps/
+**/replacements/*.png
+**/replacements/*.dds
+texture-captures/

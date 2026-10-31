@@ -158,6 +158,50 @@ internal static class Program
             // Test parsing/identity is read-only and does not change the image.
             Check(Ps2DiscIdentifier.Inspect(validDisc).IsUndercover && new FileInfo(validDisc).Length == 40 * 2048,
                 "disc identity check leaves the ISO bytes untouched");
+            // 0.4 user-owned glyph-pack workflow: no original NFS image or artwork is required.
+            var glyphData = Path.Combine(temp, "isolated-glyph-data");
+            var glyphFolder = Path.Combine(temp, "user-pack");
+            var glyphReplacementFiles = Path.Combine(glyphFolder, "replacements");
+            Directory.CreateDirectory(glyphReplacementFiles);
+            File.WriteAllText(Path.Combine(glyphFolder, "glyph-pack.json"),
+                """{"schemaVersion":1,"id":"keyboard-demo","name":"Test keyboard pack","gameSerial":"SLUS-21801","inputProfile":"keyboard"}""");
+            var glyphName = "1234567890abcdef-00000000.png";
+            var glyphPath = Path.Combine(glyphReplacementFiles, glyphName);
+            File.WriteAllBytes(glyphPath, [137, 80, 78, 71, 13, 10, 26, 10]); // test bytes, not copyrighted art
+            var expectedGlyphDir = Path.Combine(glyphData, "textures", "SLUS-21801", "replacements");
+            Check(GlyphPackManager.GetGameTextureDirectory(glyphData, "SLUS-21801") ==
+                Path.Combine(glyphData, "textures", "SLUS-21801"), "serial-scoped PCSX2 texture path");
+            Check(!Directory.Exists(glyphData), "glyph plan does not create emulator directories");
+            var emptyPackPreview = GlyphPackManager.Inspect(glyphFolder, "SLUS-21801", glyphData);
+            Check(emptyPackPreview.NewFiles == 1 && emptyPackPreview.ConflictingFiles == 0,
+                "glyph pack preview finds exactly one new replacement");
+            Check(!Directory.Exists(glyphData), "glyph pack preview is read-only");
+            ExpectThrows<InvalidDataException>(() => GlyphPackManager.Inspect(glyphFolder, "SLES-55353", glyphData),
+                "US glyph pack cannot install for PAL game serial");
+            var installedGlyphs = GlyphPackManager.Install(glyphFolder, "SLUS-21801", glyphData);
+            Check(installedGlyphs.NewFiles == 1 && File.Exists(Path.Combine(expectedGlyphDir, glyphName)),
+                "glyph pack installs only to serial-scoped replacement directory");
+            Check(GlyphPackManager.Inspect(glyphFolder, "SLUS-21801", glyphData).IdenticalFiles == 1,
+                "reinstall identifies identical texture files");
+            Check(GlyphPackManager.Install(glyphFolder, "SLUS-21801", glyphData).NewFiles == 0,
+                "identical reinstall does not replace existing data");
+            var existingGlyph = Path.Combine(expectedGlyphDir, glyphName);
+            File.WriteAllBytes(existingGlyph, [99, 88, 77]);
+            Check(GlyphPackManager.Inspect(glyphFolder, "SLUS-21801", glyphData).ConflictingFiles == 1,
+                "different pre-existing texture reported as conflict");
+            ExpectThrows<IOException>(() => GlyphPackManager.Install(glyphFolder, "SLUS-21801", glyphData),
+                "never overwrite existing different texture");
+            Check(File.ReadAllBytes(existingGlyph).SequenceEqual(new byte[] { 99, 88, 77 }),
+                "existing replacement bytes remain unchanged after conflict");
+            var badGlyphName = Path.Combine(glyphReplacementFiles, "not-a-texture.exe");
+            File.WriteAllText(badGlyphName, "test");
+            ExpectThrows<InvalidDataException>(() => GlyphPackManager.Inspect(glyphFolder, "SLUS-21801", glyphData),
+                "rejects unexpected filenames rather than copying arbitrary files");
+            File.Delete(badGlyphName);
+            ExpectThrows<ArgumentException>(() => GlyphPackManager.GetGameTextureDirectory(glyphData, "../wrong"),
+                "invalid serial cannot traverse data directory");
+            Check(!File.Exists(Path.Combine(glyphData, "PCSX2.ini")),
+                "glyph pack installer does not alter PCSX2 settings");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }

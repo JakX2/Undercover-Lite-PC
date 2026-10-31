@@ -43,7 +43,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Undercover Lite PC | Prototype 0.3";
+        Text = "Undercover Lite PC | Prototype 0.4";
         MinimumSize = new Size(800, 730);
         Size = new Size(980, 765);
         StartPosition = FormStartPosition.CenterScreen;
@@ -80,7 +80,7 @@ public sealed class MainForm : Form
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         header.Controls.Add(NewLabel("UNDERCOVER LITE PC", 22, AccentColor, bold: true), 0, 0);
         header.Controls.Add(NewLabel("An emulation-backed PC launcher for Need for Speed Undercover (PS2)", 10, Color.White), 0, 1);
-        header.Controls.Add(NewLabel("Prototype 0.3  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
+        header.Controls.Add(NewLabel("Prototype 0.4  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
         layout.Controls.Add(header, 0, 0);
 
         var paths = NewCard();
@@ -164,7 +164,27 @@ public sealed class MainForm : Form
             Font = new Font("Segoe UI", 9F),
         };
         inputHelp.Click += (_, _) => { using var guide = new InputGuideForm(); guide.ShowDialog(this); };
-        footer.Controls.Add(inputHelp, 0, 1);
+        var glyphHelp = new LinkLabel
+        {
+            Text = "Button glyphs / texture packs...",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            LinkColor = AccentColor,
+            ActiveLinkColor = Color.White,
+            VisitedLinkColor = AccentColor,
+            Font = new Font("Segoe UI", 9F),
+        };
+        glyphHelp.Click += (_, _) =>
+        {
+            using var glyphs = new GlyphPackForm(_store, ReadUi(), _sessionGate.IsRunning);
+            glyphs.ShowDialog(this);
+        };
+        var helpLinks = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+        helpLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 67));
+        helpLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
+        helpLinks.Controls.Add(inputHelp, 0, 0);
+        helpLinks.Controls.Add(glyphHelp, 1, 0);
+        footer.Controls.Add(helpLinks, 0, 1);
         footer.Controls.Add(NewLabel("Session menu: Ctrl+Shift+F10 when running (if enabled). External Windows overlay, not a PS2 patch.", 9, MutedColor), 0, 2);
         layout.Controls.Add(footer, 0, 4);
     }

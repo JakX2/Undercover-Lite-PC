@@ -43,3 +43,9 @@ A `GameSessionGate` maintains single-session state, while `MainForm` retains the
 `MainForm` registers a Windows global **Ctrl+Shift+F10** hotkey only for a running session, if the user has not opted out and `RegisterHotKey` succeeds. Registration failures are nonfatal. The companion (`CompanionMenuForm`) is a regular **topmost Windows Form**, not a native in-game overlay, and may be hidden behind exclusive fullscreen PCSX2 presentation. The launcher keeps all process/game data separate from the companion. The panel can save **next-launch** preferences and request a graceful window close, but never kills the process or changes settings inside a running PS2 game.
 
 `OnFormClosing` warns that exiting the launcher disables the global hotkey without exiting PCSX2. No screenshots, OS keyboard hooks, emulator memory modifications, or game assets are collected. Further in-game options/menu integration is blocked pending research and Windows integration testing.
+
+## 0.4 texture glyph workflow
+
+`GlyphPackForm` is an external WinForms dialog opened from the launcher, not a game overlay. `GlyphPackManager` in Core validates a user-authored `glyph-pack.json`, verifies the exact game serial against Undercover ISO identification, preflights hash-named PNG/DDS replacements, and copies new assets only into the launcher-controlled PCSX2 `textures/<SERIAL>/replacements` folder. Existing different assets are not overwritten; identical assets are skipped. A failure rolls back newly created files where possible. It never modifies `PCSX2.ini`, original game assets, or input mappings. A completed texture pack has not been built yet.
+
+Automatic folder handling requires isolated PCSX2 data and a verified uncompressed ISO; portable-mode override and custom texture directory settings can make the computed folder incorrect, so this must be checked in real PCSX2 2.8.2 testing. See `docs/GLYPH_PACKS.md` for capture steps and the pack format.

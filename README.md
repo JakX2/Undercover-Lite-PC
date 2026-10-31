@@ -4,7 +4,7 @@
 
 Undercover Lite PC aims to make the original PS2 game convenient to launch and configure like a Windows title, without rewriting its game engine. It is **not** a native PC port or a game download. This repository is independent from the Undercover PS2/Wii → Carbon PC native-engine conversion research project.
 
-> **Status: prototype 0.3 source code, not yet gameplay-validated.** The first milestone is a standalone Windows launcher. Native in-game graphics settings, keyboard-specific button glyphs, and a PC-style pause menu are **future work**, not features shipped here.
+> **Status: prototype 0.4 source code, not yet gameplay-validated.** The first milestone is a standalone Windows launcher. Native in-game graphics settings, keyboard-specific button glyphs, and a PC-style pause menu are **future work**, not features shipped here.
 
 ## What works in the first prototype
 
@@ -82,7 +82,7 @@ The **Build** workflow compiles the Windows launcher and runs the core smoke che
 | 0.2a: ISO identification and guided keyboard setup | Source implementation; Windows tests pending |
 | 0.2b: Automatic PCSX2 input profiles and complete first-run wizard | Planned |
 | 0.3: Session companion menu (external Windows panel) | Experimental source implemented; in-game integration still research |
-| 0.4: Keyboard glyph replacements in the PS2 UI | Research required |
+| 0.4: Keyboard glyph texture-pack workflow and safe importer | Foundation implemented; first real sprites pending |
 | 0.5: Graphics/performance and widescreen presets | Testing required |
 | 1.0: Polished, portable PC-like experience | Long-term |
 
@@ -103,3 +103,12 @@ docs/                        Design decisions and planned features
 This repository is code for an independent launcher, not a source for the game or BIOS. Do not commit or bundle ISO/CHD images, BIOS ROMs, proprietary game textures or bundled third-party emulator binaries. The launcher is MIT-licensed; it does not relicense PCSX2. When distributing modified PCSX2 binaries, comply with PCSX2's GPL terms.
 
 PCSX2 command-line reference: [PCSX2 official CLI documentation](https://pcsx2.net/docs/advanced/cli/).
+
+## Prototype 0.4: PC input glyph texture packs (foundation)
+
+- **Button glyphs / texture packs** link opens an opt-in setup and installation window from the launcher. It describes capturing Undercover UI textures in PCSX2 2.8.2 and locates the per-serial dumps and replacements directories for verified ISO images using isolated PCSX2 data.
+- **Safe user-provided pack import:** `glyph-pack.json` + `replacements/` with hash-named PNG/DDS images. Checks region serial, previews new/existing/conflicting textures, requests confirmation, skips already-identical files and **never overwrites differing existing replacements**. It does not edit game files or PCSX2's graphics settings. Automatic import is disabled for compressed images/unverified game IDs and non-isolated PCSX2 configurations.
+- **Blank keyboard pack template** in `glyph-packs/templates/keyboard-qwerty-us/`. No original UI textures or completed keyboard icon pack are bundled or claimed to work yet. Replacing image sprites is separate from configuring key bindings.
+- See the [glyph dumping and authoring guide](docs/GLYPH_PACKS.md) for capturing the actual PS2 prompt atlases. The user must enable **Load Textures** in PCSX2 before the replacement images appear in-game.
+
+**Version 0.4 is a technical foundation, not a verified visual mod or dynamic keyboard/gamepad UI switcher.**

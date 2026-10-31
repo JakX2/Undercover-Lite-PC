@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "keyboard-qwerty-us",
+  "name": "Undercover keyboard QWERTY (US) - empty template",
+  "gameSerial": "SLUS-21801",
+  "inputProfile": "keyboard-qwerty",
+  "description": "Metadata only. Original PS2 button textures must be captured and edited by the user."
+}
