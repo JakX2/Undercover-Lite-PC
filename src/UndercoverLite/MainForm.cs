@@ -286,16 +286,20 @@ public sealed class MainForm : Form
         if (dialog.ShowDialog(this) == DialogResult.OK) _gamePath.Text = dialog.FileName;
     }
 
-    private LauncherSettings ReadUi() => new()
+    private LauncherSettings ReadUi()
     {
-        Pcsx2Executable = _pcsx2Path.Text.Trim().Trim('"'),
-        GameImage = _gamePath.Text.Trim().Trim('"'),
-        Fullscreen = _fullscreen.Checked,
-        FastBoot = _fastBoot.Checked,
-        HideEmulatorWindow = _hideEmulator.Checked,
-        IsolatePcsx2Data = _isolateData.Checked,
-        EnableCompanionHotkey = _hotkeyEnabled.Checked,
-    };
+        // Retain preferences managed by other windows (PC Input Lab, texture search path).
+        // A fresh settings object used to erase those values on every main-window Save.
+        var settings = _store.Load();
+        settings.Pcsx2Executable = _pcsx2Path.Text.Trim().Trim('"');
+        settings.GameImage = _gamePath.Text.Trim().Trim('"');
+        settings.Fullscreen = _fullscreen.Checked;
+        settings.FastBoot = _fastBoot.Checked;
+        settings.HideEmulatorWindow = _hideEmulator.Checked;
+        settings.IsolatePcsx2Data = _isolateData.Checked;
+        settings.EnableCompanionHotkey = _hotkeyEnabled.Checked;
+        return settings;
+    }
 
     private void LoadSettings()
     {

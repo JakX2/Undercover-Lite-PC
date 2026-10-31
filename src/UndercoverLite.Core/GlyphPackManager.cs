@@ -40,16 +40,39 @@ public static class GlyphPackManager
         RegexOptions.CultureInvariant | RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(150));
 
-    public static string GetGameTextureDirectory(string pcsx2DataDirectory, string gameSerial)
+    /// <summary>
+    /// Resolves PCSX2's Graphics > Texture Replacement > Search Directory.
+    /// PCSX2 2.8.2 with the isolated -datapath may store it in a PCSX2 child folder.
+    /// The user can select the exact directory reported by PCSX2 if customized.
+    /// This method never creates or moves files.
+    /// </summary>
+    public static string GetTextureSearchDirectory(string pcsx2DataDirectory, string? configuredDirectory = null)
     {
         if (string.IsNullOrWhiteSpace(pcsx2DataDirectory))
             throw new ArgumentException("PCSX2 data directory is required.", nameof(pcsx2DataDirectory));
-        if (string.IsNullOrWhiteSpace(gameSerial) || !SerialName.IsMatch(gameSerial))
-            throw new ArgumentException("A valid PS2 game serial is required.", nameof(gameSerial));
-        return Path.Combine(Path.GetFullPath(pcsx2DataDirectory), "textures", gameSerial.ToUpperInvariant());
+        if (!string.IsNullOrWhiteSpace(configuredDirectory))
+            return Path.GetFullPath(configuredDirectory.Trim().Trim('"'));
+
+        var data = Path.GetFullPath(pcsx2DataDirectory);
+        var nested = Path.Combine(data, "PCSX2", "textures");
+        var direct = Path.Combine(data, "textures");
+        if (Directory.Exists(nested) || Directory.Exists(Path.Combine(data, "PCSX2")))
+            return nested;
+        if (Directory.Exists(direct))
+            return direct; // Older custom layouts.
+        return nested; // PCSX2 2.8.2 isolated-data default observed in actual gameplay.
     }
 
-    public static GlyphPackPlan Inspect(string packDirectory, string expectedSerial, string pcsx2DataDirectory)
+    public static string GetGameTextureDirectory(
+        string pcsx2DataDirectory, string gameSerial, string? textureSearchDirectory = null)
+    {
+        if (string.IsNullOrWhiteSpace(gameSerial) || !SerialName.IsMatch(gameSerial))
+            throw new ArgumentException("A valid PS2 game serial is required.", nameof(gameSerial));
+        return Path.Combine(GetTextureSearchDirectory(pcsx2DataDirectory, textureSearchDirectory),
+            gameSerial.ToUpperInvariant());
+    }
+
+    public static GlyphPackPlan Inspect(string packDirectory, string expectedSerial, string pcsx2DataDirectory, string? textureSearchDirectory = null)
     {
         if (string.IsNullOrWhiteSpace(packDirectory) || !Directory.Exists(packDirectory))
             throw new DirectoryNotFoundException("Select an existing glyph pack folder.");
@@ -65,7 +88,7 @@ public static class GlyphPackManager
         if (manifest.SchemaVersion != 1 || !PackId.IsMatch(manifest.Id ?? "") ||
             string.IsNullOrWhiteSpace(manifest.Name) || manifest.Name.Length > 120)
             throw new InvalidDataException("Unsupported glyph-pack manifest schema, ID, or name.");
-        var destinationGameDir = GetGameTextureDirectory(pcsx2DataDirectory, expectedSerial);
+        var destinationGameDir = GetGameTextureDirectory(pcsx2DataDirectory, expectedSerial, textureSearchDirectory);
         if (!string.Equals(manifest.GameSerial, expectedSerial, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"This pack targets {manifest.GameSerial}, not your verified game {expectedSerial}. Region-specific hashes cannot be assumed interchangeable.");
         var source = Path.Combine(pack, "replacements");
@@ -102,9 +125,9 @@ public static class GlyphPackManager
             files.Length - identical - conflicts, identical, conflicts, names);
     }
 
-    public static GlyphPackPlan Install(string packDirectory, string expectedSerial, string pcsx2DataDirectory)
+    public static GlyphPackPlan Install(string packDirectory, string expectedSerial, string pcsx2DataDirectory, string? textureSearchDirectory = null)
     {
-        var plan = Inspect(packDirectory, expectedSerial, pcsx2DataDirectory);
+        var plan = Inspect(packDirectory, expectedSerial, pcsx2DataDirectory, textureSearchDirectory);
         if (plan.FileNames.Count == 0)
             throw new InvalidDataException("This pack contains no textures yet. Capture and prepare the replacement images first.");
         if (plan.ConflictingFiles != 0)
