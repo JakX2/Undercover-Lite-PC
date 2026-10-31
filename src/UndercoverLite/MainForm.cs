@@ -24,7 +24,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Undercover Lite PC | Prototype 0.1";
+        Text = "Undercover Lite PC | Prototype 0.2";
         MinimumSize = new Size(780, 620);
         Size = new Size(920, 680);
         StartPosition = FormStartPosition.CenterScreen;
@@ -60,7 +60,7 @@ public sealed class MainForm : Form
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         header.Controls.Add(NewLabel("UNDERCOVER LITE PC", 22, AccentColor, bold: true), 0, 0);
         header.Controls.Add(NewLabel("An emulation-backed PC launcher for Need for Speed Undercover (PS2)", 10, Color.White), 0, 1);
-        header.Controls.Add(NewLabel("Prototype 0.1  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
+        header.Controls.Add(NewLabel("Prototype 0.2  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
         layout.Controls.Add(header, 0, 0);
 
         var paths = NewCard();
@@ -95,20 +95,24 @@ public sealed class MainForm : Form
         options.Controls.Add(optionTable);
         layout.Controls.Add(options, 0, 2);
 
-        var controls = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(0, 12, 0, 9) };
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 31));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 31));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        var controls = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Padding = new Padding(0, 12, 0, 9) };
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 19));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 19));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36));
         var setupButton = NewButton("Configure PCSX2", secondary: true);
         setupButton.Click += (_, _) => OpenPcsx2Setup();
-        var saveButton = NewButton("Save settings", secondary: true);
+        var verifyButton = NewButton("Check image", secondary: true);
+        verifyButton.Click += (_, _) => CheckImage();
+        var saveButton = NewButton("Save", secondary: true);
         saveButton.Click += (_, _) => SaveSettings(showMessage: true);
         _launchButton.Text = "▶  Launch Undercover";
         StyleButton(_launchButton, secondary: false);
         _launchButton.Click += (_, _) => LaunchGame();
         controls.Controls.Add(setupButton, 0, 0);
-        controls.Controls.Add(saveButton, 1, 0);
-        controls.Controls.Add(_launchButton, 2, 0);
+        controls.Controls.Add(verifyButton, 1, 0);
+        controls.Controls.Add(saveButton, 2, 0);
+        controls.Controls.Add(_launchButton, 3, 0);
         layout.Controls.Add(controls, 0, 3);
 
         var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
@@ -119,7 +123,18 @@ public sealed class MainForm : Form
         _status.Dock = DockStyle.Fill;
         _status.ForeColor = MutedColor;
         footer.Controls.Add(_status, 0, 0);
-        footer.Controls.Add(NewLabel("Keyboard/controller mapping and graphics settings are configured in PCSX2 for now.", 9, MutedColor), 0, 1);
+        var inputHelp = new LinkLabel
+        {
+            Text = "First run? Click here for PCSX2 keyboard and controller setup instructions.",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            LinkColor = AccentColor,
+            ActiveLinkColor = Color.White,
+            VisitedLinkColor = AccentColor,
+            Font = new Font("Segoe UI", 9F),
+        };
+        inputHelp.Click += (_, _) => { using var guide = new InputGuideForm(); guide.ShowDialog(this); };
+        footer.Controls.Add(inputHelp, 0, 1);
         footer.Controls.Add(NewLabel("No PS2 game, BIOS or emulator files are included. This is not yet an in-game PC menu.", 9, MutedColor), 0, 2);
         layout.Controls.Add(footer, 0, 4);
     }
@@ -265,6 +280,20 @@ public sealed class MainForm : Form
         }
     }
 
+    private DiscInspection InspectSelectedGame()
+    {
+        var inspected = Ps2DiscIdentifier.Inspect(ReadUi().GameImage);
+        _status.Text = inspected.Message;
+        return inspected;
+    }
+
+    private void CheckImage()
+    {
+        var result = InspectSelectedGame();
+        MessageBox.Show(this, result.Message, "Disc identification", MessageBoxButtons.OK,
+            result.Recognition == DiscRecognition.Undercover ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+    }
+
     private void OpenPcsx2Setup()
     {
         try
@@ -287,6 +316,15 @@ public sealed class MainForm : Form
         {
             var config = ReadUi();
             Pcsx2Launcher.Validate(config, launchingGame: true);
+            var inspection = InspectSelectedGame();
+            if (inspection.Recognition != DiscRecognition.Undercover)
+            {
+                var choice = MessageBox.Show(this,
+                    inspection.Message + Environment.NewLine + Environment.NewLine +
+                    "The launcher cannot confirm this is Need for Speed: Undercover. Launch anyway?",
+                    "Verify your game image", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (choice != DialogResult.Yes) return;
+            }
             if (!SaveSettings(showMessage: false)) return;
             using var process = Pcsx2Launcher.Start(config, _store.Pcsx2DataDirectory, launchingGame: true);
             _status.Text = "Undercover launched through PCSX2. Close the game normally when finished.";
