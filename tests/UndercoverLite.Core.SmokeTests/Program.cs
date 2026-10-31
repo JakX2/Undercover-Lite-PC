@@ -18,6 +18,39 @@ internal static class Program
         throw new Exception("FAIL: expected " + typeof(T).Name + ": " + description);
     }
 
+    // Tiny ISO9660 fixture. No game bytes or BIOS are included in the tests.
+    private static void WriteSyntheticIso(string file, string systemCnf)
+    {
+        const int sectorBytes = 2048;
+        const int rootSector = 20;
+        const int cnfSector = 21;
+        var image = new byte[40 * sectorBytes];
+        int pvd = 16 * sectorBytes;
+        image[pvd] = 1;
+        System.Text.Encoding.ASCII.GetBytes("CD001").CopyTo(image, pvd + 1);
+        image[pvd + 6] = 1;
+        WriteRecord(image, pvd + 156, new byte[] { 0 }, rootSector, sectorBytes, directory: true);
+        int dir = rootSector * sectorBytes;
+        dir += WriteRecord(image, dir, new byte[] { 0 }, rootSector, sectorBytes, directory: true);
+        dir += WriteRecord(image, dir, new byte[] { 1 }, rootSector, sectorBytes, directory: true);
+        var cnf = System.Text.Encoding.ASCII.GetBytes(systemCnf);
+        dir += WriteRecord(image, dir, System.Text.Encoding.ASCII.GetBytes("SYSTEM.CNF;1"), cnfSector, cnf.Length);
+        cnf.CopyTo(image, cnfSector * sectorBytes);
+        File.WriteAllBytes(file, image);
+    }
+
+    private static int WriteRecord(byte[] image, int offset, byte[] name, int sector, int length, bool directory = false)
+    {
+        int size = 33 + name.Length + (name.Length % 2 == 0 ? 1 : 0);
+        image[offset] = (byte)size;
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(offset + 2, 4), (uint)sector);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(offset + 10, 4), (uint)length);
+        image[offset + 25] = directory ? (byte)2 : (byte)0;
+        image[offset + 32] = (byte)name.Length;
+        name.CopyTo(image, offset + 33);
+        return size;
+    }
+
     public static int Main()
     {
         var temp = Path.Combine(Path.GetTempPath(), "UndercoverLite-Smoke-" + Guid.NewGuid().ToString("N"));
@@ -85,6 +118,35 @@ internal static class Program
             store.Save(loaded);
             Check(!File.Exists(store.FilePath + ".tmp"), "atomic save removes temporary file");
             Check(!store.Load().Fullscreen && !store.Load().IsolatePcsx2Data, "updated settings persisted");
+            // Verify disc identity without loading the game or relying on filenames.
+            Check(Ps2DiscIdentifier.IdentifySystemCnf("BOOT2 = cdrom0:\\SLUS_218.01;1\n").IsUndercover,
+                "Undercover US BOOT2 serial recognized");
+            Check(Ps2DiscIdentifier.IdentifySystemCnf("BOOT2 = cdrom0:\\SLES_553.53;1\n").IsUndercover,
+                "Undercover PAL BOOT2 serial recognized");
+            Check(Ps2DiscIdentifier.IdentifySystemCnf("BOOT2 = cdrom0:\\SLPM_551.27;1\n").IsUndercover,
+                "Undercover Japanese BOOT2 serial recognized");
+            Check(Ps2DiscIdentifier.IdentifySystemCnf("BOOT2 = cdrom0:\\SLUS_212.67;1").Recognition == DiscRecognition.DifferentGame,
+                "different PS2 title is explicitly identified");
+            Check(Ps2DiscIdentifier.IdentifySystemCnf("NAME = SLUS_218.01\nBOOT2 = other\n").Recognition == DiscRecognition.Unknown,
+                "cannot spoof identity with unrelated SYSTEM.CNF line");
+            var validDisc = Path.Combine(temp, "verified.iso");
+            WriteSyntheticIso(validDisc, "BOOT2 = cdrom0:\\SLUS_218.01;1\nVER = 1.00\n");
+            var verified = Ps2DiscIdentifier.Inspect(validDisc);
+            Check(verified.IsUndercover && verified.Serial == "SLUS-21801",
+                "reads SYSTEM.CNF from a bounded synthetic ISO9660 root directory");
+            Check(Ps2DiscIdentifier.Inspect(Path.Combine(temp, "missing.iso")).Recognition == DiscRecognition.Unknown,
+                "missing ISO is not accepted as verified Undercover");
+            var badIso = Path.Combine(temp, "bad.iso");
+            File.WriteAllBytes(badIso, new byte[32768]);
+            Check(Ps2DiscIdentifier.Inspect(badIso).Recognition == DiscRecognition.Unknown,
+                "invalid ISO9660 volume descriptor is rejected");
+            var compressed = Path.Combine(temp, "game.chd");
+            File.WriteAllBytes(compressed, [1, 2, 3]);
+            Check(Ps2DiscIdentifier.Inspect(compressed).Recognition == DiscRecognition.NotInspected,
+                "CHD game can still launch, but identification is not claimed");
+            // Test parsing/identity is read-only and does not change the image.
+            Check(Ps2DiscIdentifier.Inspect(validDisc).IsUndercover && new FileInfo(validDisc).Length == 40 * 2048,
+                "disc identity check leaves the ISO bytes untouched");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
