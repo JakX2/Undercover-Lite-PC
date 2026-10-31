@@ -124,3 +124,8 @@ PCSX2 command-line reference: [PCSX2 official CLI documentation](https://pcsx2.n
 - The screenshot of actual 0.3 gameplay is now documented in [PC input experience](docs/PC_INPUT_EXPERIENCE.md), with a staged plan for real glyph replacements, controller themes, and eventual direct text typing.
 
 **0.5 does not yet provide an integrated PS2 menu, automatic keyboard profile or actual direct typing.**
+## Texture capture: real Undercover PS2 button sprites (0.5b research)
+
+A private 13-image PCSX2 texture dump was identified: ten **individual 32×32 prompt icons** (Cross, Circle, Triangle, Start, Select, L1, L2, R1, R2, R3), one **256×256 controller graphic**, and two graphics requiring more research. The standalone Square icon remains missing. The original game art is **not** committed.
+
+Original experimental 32×32 PC keycap replacement art and two candidate profiles were prepared as a **private proof of concept**, not a validated in-game mod. Region-specific hash compatibility, real controller bindings and dynamic menu-vs-driving prompts remain unverified. See [verified texture capture inventory](docs/VERIFIED_TEXTURE_CAPTURE_2026-10-31.md) for exact hashed filenames and testing scope.
