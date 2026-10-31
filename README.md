@@ -4,7 +4,7 @@
 
 Undercover Lite PC aims to make the original PS2 game convenient to launch and configure like a Windows title, without rewriting its game engine. It is **not** a native PC port or a game download. This repository is independent from the Undercover PS2/Wii → Carbon PC native-engine conversion research project.
 
-> **Status: prototype 0.1 source code.** The first milestone is a standalone Windows launcher. Native in-game graphics settings, keyboard-specific button glyphs, and a PC-style pause menu are **future work**, not features shipped here.
+> **Status: prototype 0.2 source code, not yet gameplay-validated.** The first milestone is a standalone Windows launcher. Native in-game graphics settings, keyboard-specific button glyphs, and a PC-style pause menu are **future work**, not features shipped here.
 
 ## What works in the first prototype
 
@@ -14,6 +14,12 @@ Undercover Lite PC aims to make the original PS2 game convenient to launch and c
 - Boot the chosen game through PCSX2 with the modern documented `-datapath`, `-nogui`/`-batch`, `-fullscreen`/`-nofullscreen`, `-fastboot`/`-slowboot`, and `-- <disc>` flags.
 - Save launcher preferences in `%LOCALAPPDATA%\UndercoverLitePC\launcher.json` (not in the Git repository).
 - No special game binaries, BIOS, saves, copyrighted art or emulator releases are included.
+
+## Prototype 0.2 additions
+
+- **Check image:** Inspects an uncompressed ISO's `SYSTEM.CNF` / `BOOT2` record and reports the identified PS2 game serial without relying on the filename. Supports known US, PAL and Japanese Undercover PS2 serials. It warns, but lets you confirm and continue, when a different game, an unknown ISO or a compressed image is selected.
+- **First-run input guide:** Click the keyboard/controller setup link in the launcher to see the PCSX2 setup steps and suggested keyboard layout. This is guidance only; **it does not modify the PCSX2 controller profile**.
+- Bounded, read-only ISO9660 directory parsing and synthetic disc-image smoke tests. See [identification details](docs/GAME_IDENTIFICATION.md).
 
 ## Verified PCSX2 v2.8.2 package layout
 
@@ -40,8 +46,8 @@ Official release: https://github.com/PCSX2/pcsx2/releases/tag/v2.8.2
 1. Install [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) or use the self-contained build produced by the CI workflow.
 2. Download and configure a current [PCSX2](https://pcsx2.net/) Qt release independently. **You must supply your own legally obtained BIOS and game image.**
 3. Download/build `UndercoverLite.exe` and run it.
-4. Use **Browse** to select your `pcsx2-qt.exe` and your Undercover PS2 `.iso` (or compatible disc image).
-5. Click **Configure PCSX2** to complete the first-run BIOS wizard and keyboard/controller setup. If **Separate PCSX2 settings and saves** is checked, this instance uses its own PCSX2 configuration and memory cards under `%LOCALAPPDATA%\UndercoverLitePC\pcsx2-data`.
+4. Use **Browse** to select your `pcsx2-qt.exe` and your Undercover PS2 `.iso` (or compatible disc image). Click **Check image** to identify an uncompressed ISO.
+5. Click **Configure PCSX2** to complete the first-run BIOS wizard and keyboard/controller setup. The launcher provides a first-run input guide link. If **Separate PCSX2 settings and saves** is checked, this instance uses its own PCSX2 configuration and memory cards under `%LOCALAPPDATA%\UndercoverLitePC\pcsx2-data`.
 6. Click **Launch Undercover**. The emulator handles game execution and rendering.
 
 **Important:** `-datapath` does not override PCSX2's own `-portable` mode; if you have `portable.ini`/`portable.txt` beside PCSX2, that emulator's portable configuration takes precedence. Use a normal installed PCSX2 binary if you want the isolated datapath behavior.
@@ -63,7 +69,8 @@ The **Build** workflow compiles the Windows launcher and runs the core smoke che
 | Milestone | Status |
 |---|---|
 | 0.1: Windows launcher, isolated config, original game launching | Initial source prototype |
-| 0.2: Better game detection, input profiles and first-run wizard | Planned |
+| 0.2a: ISO identification and guided keyboard setup | Source implementation; Windows tests pending |
+| 0.2b: Automatic PCSX2 input profiles and complete first-run wizard | Planned |
 | 0.3: In-game PC options overlay | Research required |
 | 0.4: Keyboard glyph replacements in the PS2 UI | Research required |
 | 0.5: Graphics/performance and widescreen presets | Testing required |
