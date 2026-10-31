@@ -223,13 +223,20 @@ public sealed class MainForm : Form
         try
         {
             var s = _store.Load();
-            _pcsx2Path.Text = s.Pcsx2Executable;
+            // On first use, detect the official Qt executable if PCSX2 is
+            // separately extracted next to Undercover Lite. User choice wins.
+            var detected = string.IsNullOrWhiteSpace(s.Pcsx2Executable)
+                ? Pcsx2InstallLocator.FindNextToLauncher(AppContext.BaseDirectory)
+                : null;
+            _pcsx2Path.Text = detected ?? s.Pcsx2Executable;
             _gamePath.Text = s.GameImage;
             _fullscreen.Checked = s.Fullscreen;
             _fastBoot.Checked = s.FastBoot;
             _hideEmulator.Checked = s.HideEmulatorWindow;
             _isolateData.Checked = s.IsolatePcsx2Data;
-            _status.Text = "Ready. Select PCSX2 and your PS2 image, then configure your controller.";
+            _status.Text = detected is null
+                ? "Ready. Select PCSX2 and your PS2 image, then configure your controller."
+                : "Found PCSX2 beside the launcher. Configure BIOS and input before launching.";
         }
         catch (Exception ex)
         {
