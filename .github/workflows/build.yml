@@ -1,0 +1,33 @@
+name: Windows launcher build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile launcher
+        run: dotnet build src/UndercoverLite/UndercoverLite.csproj --configuration Release
+      - name: Run core smoke tests
+        run: dotnet run --project tests/UndercoverLite.Core.SmokeTests/UndercoverLite.Core.SmokeTests.csproj --configuration Release
+      - name: Publish Windows executable
+        run: dotnet publish src/UndercoverLite/UndercoverLite.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none --output ./artifacts/UndercoverLitePC
+      - name: Upload downloadable launcher artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UndercoverLitePC-win-x64-prototype
+          path: artifacts/UndercoverLitePC/
+          if-no-files-found: error

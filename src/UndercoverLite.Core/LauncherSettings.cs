@@ -1,0 +1,12 @@
+namespace UndercoverLite.Core;
+
+/// <summary>Only Windows launcher preferences. Never stores or distributes BIOS/game bytes.</summary>
+public sealed class LauncherSettings
+{
+    public string Pcsx2Executable { get; set; } = "";
+    public string GameImage { get; set; } = "";
+    public bool Fullscreen { get; set; } = true;
+    public bool FastBoot { get; set; } = true;
+    public bool HideEmulatorWindow { get; set; } = true;
+    public bool IsolatePcsx2Data { get; set; } = true;
+}

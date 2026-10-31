@@ -1,0 +1,38 @@
+# .NET / Visual Studio
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+*.cache
+TestResults/
+artifacts/
+publish/
+
+# User configuration / PCSX2 data
+launcher.json
+pcsx2-data/
+PCSX2/
+memcards/
+sstates/
+
+# Proprietary games and firmware are NEVER committed
+*.iso
+*.chd
+*.cso
+*.zso
+*.gz
+*.bin
+*.cue
+*.elf
+*.rom
+*.nvm
+*.mec
+*.ps2
+*.bios
+*.7z
+*.zip
+*.rar
+*.exe
+*.dll
