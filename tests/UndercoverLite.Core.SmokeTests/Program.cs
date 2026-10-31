@@ -35,6 +35,20 @@ internal static class Program
             Directory.CreateDirectory(Path.GetDirectoryName(iso)!);
             File.WriteAllBytes(exe, Array.Empty<byte>());
             File.WriteAllBytes(iso, Array.Empty<byte>());
+            Check(Pcsx2InstallLocator.FindNextToLauncher(temp) is null,
+                "auto-detection does not guess when PCSX2 is missing");
+            var portable = Path.Combine(temp, "pcsx2-v2.8.2-windows-x64-Qt");
+            Directory.CreateDirectory(portable);
+            var portableExe = Path.Combine(portable, "pcsx2-qt.exe");
+            File.WriteAllBytes(portableExe, Array.Empty<byte>());
+            Check(Pcsx2InstallLocator.FindNextToLauncher(temp) == portableExe,
+                "auto-detects v2.8.2 extracted beside launcher");
+            var directExe = Path.Combine(temp, "pcsx2-qt.exe");
+            File.WriteAllBytes(directExe, Array.Empty<byte>());
+            Check(Pcsx2InstallLocator.FindNextToLauncher(temp) == directExe,
+                "prefers PCSX2 Qt directly beside launcher");
+            ExpectThrows<ArgumentException>(() => Pcsx2InstallLocator.FindNextToLauncher(""),
+                "rejects missing launcher directory");
             var settings = new LauncherSettings { Pcsx2Executable = exe, GameImage = iso };
             store.Save(settings);
             Check(File.Exists(store.FilePath), "JSON config created");
