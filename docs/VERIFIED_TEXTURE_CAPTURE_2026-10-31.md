@@ -45,3 +45,8 @@ Original user-supplied game texture bitmaps and the private proof ZIP are **not 
 2. Run a single 10-image proof pack in the exact same game build that produced the dump, matching actual keyboard mappings.
 3. Photograph the results, note missing/reused icons, and refine the 256×256 controller atlas separately.
 4. Only after proven glyph replacement, research context-dependent prompts and true direct keyboard name entry.
+
+
+## Actual in-game validation update
+
+The developer later supplied a **real PCSX2 screenshot** of the Undercover main menu displaying **Accept [W]**, matching the experimental driving-first replacement for Cross. This confirms that at least one captured hash-named prompt texture was accepted and displayed by the game after correcting the texture Search Directory. It does not yet verify the other nine individual symbols, the standalone Square icon, the controller diagram, other regional builds or that the keyboard key W actually triggers Accept. A planned 0.6 manager allows opting into ownership of those earlier manually installed textures and switching back and forth safely.
