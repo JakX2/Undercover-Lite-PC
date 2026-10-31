@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="126" height="80" viewBox="0 0 126 80">
+  <rect x="4" y="5" width="118" height="70" rx="10" fill="#17191e" stroke="#f2f3f6" stroke-width="4"/>
+  <path d="M 15 63 H 111" stroke="#9da6b5" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <text x="63" y="45" fill="#ffffff" text-anchor="middle" dominant-baseline="middle"
+        font-family="Arial, sans-serif" font-weight="700" font-size="31">ESC</text>
+</svg>

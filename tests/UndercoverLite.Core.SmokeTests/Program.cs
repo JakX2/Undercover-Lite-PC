@@ -202,6 +202,36 @@ internal static class Program
                 "invalid serial cannot traverse data directory");
             Check(!File.Exists(Path.Combine(glyphData, "PCSX2.ini")),
                 "glyph pack installer does not alter PCSX2 settings");
+            // 0.5 PC prompt-label profile / name-entry planning (no input injection).
+            var pcLabels = new PcPromptLayout();
+            pcLabels.Validate();
+            Check(pcLabels.Accept == "Enter" && pcLabels.Done == "F" && pcLabels.Delete == "Backspace",
+                "distinct Cross, Start and Square PC labels");
+            Check(pcLabels.Actions().Count == 10, "screenshot prompt actions and D-pad all represented");
+            pcLabels.Done = "Enter";
+            ExpectThrows<ArgumentException>(() => pcLabels.Validate(),
+                "cannot accidentally assign Enter to both Cross and Start");
+            pcLabels.Done = "F";
+            loaded.PcPromptLayout = pcLabels;
+            store.Save(loaded);
+            Check(store.Load().PcPromptLayout.Accept == "Enter" &&
+                  store.Load().PcPromptLayout.Done == "F", "PC label suggestions persist in launcher JSON");
+            Check(NameEntryGridPlanner.Plan("A").SequenceEqual(new[] { GridAction.Accept, GridAction.Done }),
+                "name A uses initial cursor and finish action");
+            Check(NameEntryGridPlanner.Plan("N").SequenceEqual(new[] { GridAction.Down, GridAction.Accept, GridAction.Done }),
+                "name N navigates to second alphabet row");
+            Check(NameEntryGridPlanner.Plan("1").SequenceEqual(new[] { GridAction.Down, GridAction.Down, GridAction.Accept, GridAction.Done }),
+                "digit 1 navigates to short numeric row");
+            Check(NameEntryGridPlanner.Plan("9Z").SequenceEqual(
+                new[] { GridAction.Down, GridAction.Down, GridAction.Right, GridAction.Right, GridAction.Right,
+                    GridAction.Right, GridAction.Right, GridAction.Right, GridAction.Right, GridAction.Right,
+                    GridAction.Accept, GridAction.Up, GridAction.Right, GridAction.Right,
+                    GridAction.Right, GridAction.Right, GridAction.Accept, GridAction.Done }),
+                "planner exits short digit row before moving to column 12");
+            ExpectThrows<ArgumentException>(() => NameEntryGridPlanner.Plan("NAME WITH SPACES"),
+                "uncaptured space tile is not silently invented");
+            Check(!File.Exists(Path.Combine(glyphData, "input-bindings.ini")),
+                "PC prompt suggestions do not edit PCSX2 input bindings");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
