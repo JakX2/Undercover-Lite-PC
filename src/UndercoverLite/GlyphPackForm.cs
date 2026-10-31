@@ -12,22 +12,24 @@ public sealed class GlyphPackForm : Form
     private readonly LauncherSettings _settings;
     private readonly bool _gameRunning;
     private readonly Label _feedback = new();
+    private readonly TextBox _textureSearchPath = new() { ReadOnly = true };
 
     public GlyphPackForm(LauncherSettingsStore store, LauncherSettings settings, bool gameRunning)
     {
         _store = store;
         _settings = settings;
         _gameRunning = gameRunning;
-        Text = "Undercover Lite PC | Button glyph packs (0.4)";
-        Size = new Size(720, 530);
-        MinimumSize = new Size(590, 460);
+        Text = "Undercover Lite PC | Button glyph packs (path fix)";
+        Size = new Size(810, 610);
+        MinimumSize = new Size(680, 520);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = Color.FromArgb(15, 19, 28);
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(18) };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(18) };
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 55));
         var guide = new RichTextBox
@@ -44,6 +46,28 @@ public sealed class GlyphPackForm : Form
                    "PC key artwork must match your actual PCSX2 bindings. The prototype does not apply keyboard mappings or swap packs in real time."
         };
         layout.Controls.Add(guide, 0, 0);
+        var search = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+        search.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 78));
+        search.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22));
+        search.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        search.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        search.Controls.Add(new Label
+        {
+            Text = "PCSX2 Search Directory (match the path shown in Graphics Settings):",
+            Dock = DockStyle.Fill, ForeColor = Color.FromArgb(255, 182, 64),
+            TextAlign = ContentAlignment.MiddleLeft
+        }, 0, 0);
+        _textureSearchPath.Dock = DockStyle.Fill;
+        _textureSearchPath.BackColor = Color.FromArgb(25, 31, 42);
+        _textureSearchPath.ForeColor = Color.White;
+        _textureSearchPath.Margin = new Padding(0, 8, 6, 8);
+        _textureSearchPath.Text = GlyphPackManager.GetTextureSearchDirectory(
+            _store.Pcsx2DataDirectory, _settings.TextureSearchDirectory);
+        search.Controls.Add(_textureSearchPath, 0, 1);
+        var selectRoot = MakeButton("Choose folder...");
+        selectRoot.Click += (_, _) => ChooseSearchDirectory();
+        search.Controls.Add(selectRoot, 1, 1);
+        layout.Controls.Add(search, 0, 1);
         var buttons = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
         for (int i = 0; i < 3; i++) buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333f));
         var dump = MakeButton("Open texture dumps");
@@ -55,13 +79,13 @@ public sealed class GlyphPackForm : Form
         buttons.Controls.Add(dump, 0, 0);
         buttons.Controls.Add(replacement, 1, 0);
         buttons.Controls.Add(install, 2, 0);
-        layout.Controls.Add(buttons, 0, 1);
+        layout.Controls.Add(buttons, 0, 2);
         _feedback.Dock = DockStyle.Fill;
         _feedback.ForeColor = Color.FromArgb(255, 182, 64);
         _feedback.TextAlign = ContentAlignment.MiddleLeft;
         _feedback.Text = _gameRunning ? "Close your current PCSX2 game session before installing a pack." :
             "No original game artwork is bundled. See docs/GLYPH_PACKS.md for the pack format.";
-        layout.Controls.Add(_feedback, 0, 2);
+        layout.Controls.Add(_feedback, 0, 3);
         Controls.Add(layout);
     }
 
@@ -71,6 +95,34 @@ public sealed class GlyphPackForm : Form
         BackColor = Color.FromArgb(39, 48, 61), ForeColor = Color.White,
         FlatStyle = FlatStyle.Flat
     };
+
+    private void ChooseSearchDirectory()
+    {
+        if (_gameRunning)
+        {
+            _feedback.Text = "Close the running PCSX2 session before changing the texture location.";
+            return;
+        }
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "Select the exact Search Directory displayed in PCSX2 Graphics > Texture Replacement",
+            SelectedPath = Directory.Exists(_textureSearchPath.Text)
+                ? _textureSearchPath.Text : _store.Pcsx2DataDirectory
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            var selected = Path.GetFullPath(dialog.SelectedPath);
+            // Update only this setting; preserve changes from PC Input Lab and main launcher.
+            var settings = _store.Load();
+            settings.TextureSearchDirectory = selected;
+            _store.Save(settings);
+            _settings.TextureSearchDirectory = selected;
+            _textureSearchPath.Text = selected;
+            _feedback.Text = "Saved exact PCSX2 Search Directory. Reinstall your glyph pack here.";
+        }
+        catch (Exception ex) { ShowError(ex.Message); }
+    }
 
     private string? VerifiedSerial()
     {
@@ -94,7 +146,8 @@ public sealed class GlyphPackForm : Form
         {
             var serial = VerifiedSerial();
             if (serial is null) return;
-            var directory = Path.Combine(GlyphPackManager.GetGameTextureDirectory(_store.Pcsx2DataDirectory, serial), child);
+            var directory = Path.Combine(GlyphPackManager.GetGameTextureDirectory(
+                _store.Pcsx2DataDirectory, serial, _textureSearchPath.Text), child);
             Directory.CreateDirectory(directory);
             Process.Start(new ProcessStartInfo(directory) { UseShellExecute = true });
             _feedback.Text = $"Opened {serial}/{child}.";
@@ -111,7 +164,8 @@ public sealed class GlyphPackForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try
         {
-            var plan = GlyphPackManager.Inspect(dialog.SelectedPath, serial, _store.Pcsx2DataDirectory);
+            var plan = GlyphPackManager.Inspect(dialog.SelectedPath, serial,
+                _store.Pcsx2DataDirectory, _textureSearchPath.Text);
             if (plan.FileNames.Count == 0)
             {
                 _feedback.Text = "The selected pack is an empty template. Add edited textures first.";
@@ -128,7 +182,8 @@ public sealed class GlyphPackForm : Form
                 "Only user-supplied textures will be copied. PCSX2 Load Textures must be enabled manually. Proceed?",
                 "Install glyph pack", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (approval != DialogResult.Yes) return;
-            var result = GlyphPackManager.Install(dialog.SelectedPath, serial, _store.Pcsx2DataDirectory);
+            var result = GlyphPackManager.Install(dialog.SelectedPath, serial,
+                _store.Pcsx2DataDirectory, _textureSearchPath.Text);
             _feedback.Text = $"Installed {result.NewFiles} file(s), {result.IdenticalFiles} already present. Restart PCSX2 with Load Textures enabled.";
         }
         catch (Exception ex) { ShowError(ex.Message); }

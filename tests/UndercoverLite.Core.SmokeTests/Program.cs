@@ -168,13 +168,34 @@ internal static class Program
             var glyphName = "1234567890abcdef-00000000.png";
             var glyphPath = Path.Combine(glyphReplacementFiles, glyphName);
             File.WriteAllBytes(glyphPath, [137, 80, 78, 71, 13, 10, 26, 10]); // test bytes, not copyrighted art
-            var expectedGlyphDir = Path.Combine(glyphData, "textures", "SLUS-21801", "replacements");
+            var nestedSearch = Path.Combine(glyphData, "PCSX2", "textures");
+            var expectedGlyphDir = Path.Combine(nestedSearch, "SLUS-21801", "replacements");
+            Check(GlyphPackManager.GetTextureSearchDirectory(glyphData) == nestedSearch,
+                "PCSX2 2.8.2 isolated Search Directory includes PCSX2 subfolder");
             Check(GlyphPackManager.GetGameTextureDirectory(glyphData, "SLUS-21801") ==
-                Path.Combine(glyphData, "textures", "SLUS-21801"), "serial-scoped PCSX2 texture path");
+                Path.Combine(nestedSearch, "SLUS-21801"), "serial-scoped PCSX2 texture path");
             Check(!Directory.Exists(glyphData), "glyph plan does not create emulator directories");
+            var legacyData = Path.Combine(temp, "legacy-layout");
+            var legacySearch = Path.Combine(legacyData, "textures");
+            Directory.CreateDirectory(legacySearch);
+            Check(GlyphPackManager.GetTextureSearchDirectory(legacyData) == legacySearch,
+                "older direct-textures layouts remain discoverable");
+            Directory.CreateDirectory(Path.Combine(legacyData, "PCSX2"));
+            Check(GlyphPackManager.GetTextureSearchDirectory(legacyData) ==
+                Path.Combine(legacyData, "PCSX2", "textures"),
+                "PCSX2-managed folder takes precedence over stale old installer path");
+            var customSearch = Path.Combine(temp, "user-configured-search");
+            Check(GlyphPackManager.GetTextureSearchDirectory(glyphData, customSearch) ==
+                customSearch, "explicit PCSX2 Search Directory wins over guessing");
+            Check(!Directory.Exists(customSearch), "search path resolution is read-only");
             var emptyPackPreview = GlyphPackManager.Inspect(glyphFolder, "SLUS-21801", glyphData);
             Check(emptyPackPreview.NewFiles == 1 && emptyPackPreview.ConflictingFiles == 0,
                 "glyph pack preview finds exactly one new replacement");
+            var customPreview = GlyphPackManager.Inspect(glyphFolder, "SLUS-21801", glyphData, customSearch);
+            Check(customPreview.DestinationDirectory ==
+                Path.Combine(customSearch, "SLUS-21801", "replacements"),
+                "custom Search Directory maps to exact PCSX2 replacement path");
+            Check(!Directory.Exists(customSearch), "custom pack preview does not create folders");
             Check(!Directory.Exists(glyphData), "glyph pack preview is read-only");
             ExpectThrows<InvalidDataException>(() => GlyphPackManager.Inspect(glyphFolder, "SLES-55353", glyphData),
                 "US glyph pack cannot install for PAL game serial");
@@ -202,6 +223,12 @@ internal static class Program
                 "invalid serial cannot traverse data directory");
             Check(!File.Exists(Path.Combine(glyphData, "PCSX2.ini")),
                 "glyph pack installer does not alter PCSX2 settings");
+            loaded.TextureSearchDirectory = customSearch;
+            loaded.PcPromptLayout = new PcPromptLayout { Done = "F" };
+            store.Save(loaded);
+            Check(store.Load().TextureSearchDirectory == customSearch &&
+                store.Load().PcPromptLayout.Done == "F",
+                "custom search location and PC Input Lab settings persist together");
             // 0.5 PC prompt-label profile / name-entry planning (no input injection).
             var pcLabels = new PcPromptLayout();
             pcLabels.Validate();

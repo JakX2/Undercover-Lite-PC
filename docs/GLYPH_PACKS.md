@@ -75,3 +75,12 @@ No runtime glyph theme switching or PS2 UI hooks are included. The companion men
 ## Suggested next research handoff
 
 If sharing captures for private development, send **a small ZIP of the suspected prompt texture hashes and corresponding screenshots showing where they appear**, plus the Undercover ISO's game serial. Avoid uploading a BIOS or game image. We can catalog the identified prompt atlases and design region-specific key glyphs without committing the original dumped sprites to the public repository.
+## Fix: PCSX2 2.8.2 Search Directory differs from the old installer path
+
+An actual Undercover Lite PCSX2 2.8.2 gameplay screenshot shows **Load Textures** enabled and **Search Directory** set to `%LOCALAPPDATA%/UndercoverLitePC/pcsx2-data/PCSX2/textures`. Earlier versions of our importer incorrectly used `%LOCALAPPDATA%/UndercoverLitePC/pcsx2-data/textures` and could report successful installation into a directory PCSX2 never searched.
+
+In the glyph-pack window, the **PCSX2 Search Directory** field now defaults to the nested `PCSX2/textures` folder when detected. It also allows **Choose folder...** to explicitly match PCSX2's own Graphics > Texture Replacement > Search Directory, for portable or customized configurations. This selected path is saved in launcher settings. The importer still verifies the disc serial and refuses to overwrite different existing textures.
+
+If you used an old Undercover Lite version to install a glyph pack, **reinstall the same pack into the correctly selected directory**. The old files are not moved or deleted automatically. Restart PCSX2 with **Load Textures** enabled, and check whether the PS2 menu glyphs now change. If they still don't appear, verify the ISO serial matches the pack and that the dump hashes are from the same release/region.
+
+**Important:** `PCSX2/textures` is not universal; the source of truth is the **Search Directory shown by PCSX2**, not an assumption based on the launcher configuration.
