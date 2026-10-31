@@ -44,7 +44,7 @@ public sealed class GlyphPackForm : Form
                    "3. Inspect the captured PNG files under textures/<game serial>/dumps. Identify prompt sheets; create your own edited images preserving the exact PCSX2 hash filenames.\n\n" +
                    "4. Put edited PNG/DDS textures under your custom pack's replacements folder, alongside a glyph-pack.json manifest in its parent folder.\n\n" +
                    "5. ACTIVATE / SWITCH tracks exactly what Undercover Lite installs. " +
-                   "DISABLE removes only unchanged tracked icons. Restart PCSX2 with LOAD TEXTURES enabled.\\n\\n" +
+                   "DISABLE removes only unchanged tracked icons. Restart PCSX2 with LOAD TEXTURES enabled.\n\n" +
                    "To adopt an old installation, first select the SAME theme and check the explicit " +
                    "adoption box for byte-identical existing textures. Unknown mods are protected. " +
                    "This does not change keyboard bindings."
@@ -167,36 +167,71 @@ public sealed class GlyphPackForm : Form
         catch (Exception ex) { ShowError(ex.Message); }
     }
 
-    private void InstallPack()
+    private void ActivateTheme()
     {
-        if (_gameRunning) { _feedback.Text = "Close the game first, then reopen this screen."; return; }
+        if (_gameRunning) { _feedback.Text = "Close Undercover before changing glyph themes."; return; }
         var serial = VerifiedSerial();
         if (serial is null) return;
-        using var dialog = new FolderBrowserDialog { Description = "Select a folder containing glyph-pack.json and replacements/" };
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "Select a glyph theme folder with glyph-pack.json and replacements/"
+        };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try
         {
-            var plan = GlyphPackManager.Inspect(dialog.SelectedPath, serial,
+            var plan = ManagedGlyphThemes.Preview(dialog.SelectedPath, serial,
                 _store.Pcsx2DataDirectory, _textureSearchPath.Text);
-            if (plan.FileNames.Count == 0)
+            if (!plan.CanApply)
             {
-                _feedback.Text = "The selected pack is an empty template. Add edited textures first.";
+                _feedback.Text = $"Blocked: {plan.ForeignConflicts} unrelated conflicts; " +
+                    $"{plan.ModifiedManaged} edited or missing managed glyphs.";
                 return;
             }
-            if (plan.ConflictingFiles != 0)
+            if (plan.IdenticalUnmanaged > 0 && !_adoptMatching.Checked)
             {
-                _feedback.Text = $"Blocked: {plan.ConflictingFiles} existing replacement files differ. No files were overwritten.";
+                _feedback.Text = $"Found {plan.IdenticalUnmanaged} already-installed matching glyphs. " +
+                    "Check adoption to manage the existing theme.";
                 return;
             }
-            var approval = MessageBox.Show(this,
-                $"Pack: {plan.Name}\nRegion: {plan.Serial}\nNew textures: {plan.NewFiles}\nAlready installed: {plan.IdenticalFiles}\n\n" +
-                $"Destination:\n{plan.DestinationDirectory}\n\n" +
-                "Only user-supplied textures will be copied. PCSX2 Load Textures must be enabled manually. Proceed?",
-                "Install glyph pack", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            if (approval != DialogResult.Yes) return;
-            var result = GlyphPackManager.Install(dialog.SelectedPath, serial,
-                _store.Pcsx2DataDirectory, _textureSearchPath.Text);
-            _feedback.Text = $"Installed {result.NewFiles} file(s), {result.IdenticalFiles} already present. Restart PCSX2 with Load Textures enabled.";
+            var confirm = MessageBox.Show(this,
+                $"Theme: {plan.PackName}\nSerial: {plan.Serial}\n" +
+                $"New: {plan.NewFiles} | Replace managed: {plan.ReplaceManaged}\n" +
+                $"Remove old managed: {plan.RemoveManaged}\n" +
+                $"Adopt existing identical: {plan.IdenticalUnmanaged}\n\n" +
+                $"Destination: {plan.Destination}\n\n" +
+                "Restart the emulated game after switching. Continue?",
+                "Activate keyboard glyphs", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (confirm != DialogResult.Yes) return;
+            var result = ManagedGlyphThemes.Activate(dialog.SelectedPath, serial,
+                _store.Pcsx2DataDirectory, _textureSearchPath.Text, _adoptMatching.Checked);
+            _adoptMatching.Checked = false;
+            _feedback.Text = $"Active theme: {result.Name}. {result.Changed} texture(s) updated. Restart PCSX2.";
+        }
+        catch (Exception ex) { ShowError(ex.Message); }
+    }
+
+    private void DisableTheme()
+    {
+        if (_gameRunning) { _feedback.Text = "Close Undercover before disabling glyphs."; return; }
+        var serial = VerifiedSerial();
+        if (serial is null) return;
+        try
+        {
+            var active = ManagedGlyphThemes.ActivePack(serial, _store.Pcsx2DataDirectory,
+                _textureSearchPath.Text);
+            if (active is null)
+            {
+                _feedback.Text = "No managed theme active. Other texture mods remain untouched.";
+                return;
+            }
+            if (MessageBox.Show(this,
+                $"Disable theme '{active}' and remove only its unchanged tracked images?\n" +
+                "Other replacements will not be touched.",
+                "Restore PS2 button glyphs", MessageBoxButtons.YesNo, MessageBoxIcon.Question)
+                != DialogResult.Yes) return;
+            var result = ManagedGlyphThemes.Deactivate(serial, _store.Pcsx2DataDirectory,
+                _textureSearchPath.Text);
+            _feedback.Text = $"Disabled {result.Name}. Removed {result.Changed} file(s). Restart PCSX2.";
         }
         catch (Exception ex) { ShowError(ex.Message); }
     }
