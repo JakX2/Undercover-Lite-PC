@@ -10,4 +10,6 @@ public sealed class LauncherSettings
     public bool HideEmulatorWindow { get; set; } = true;
     public bool IsolatePcsx2Data { get; set; } = true;
     public bool EnableCompanionHotkey { get; set; } = true;
+    // Suggested on-screen key labels only; not applied to the emulator.
+    public PcPromptLayout PcPromptLayout { get; set; } = new();
 }

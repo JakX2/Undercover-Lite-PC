@@ -4,7 +4,7 @@
 
 Undercover Lite PC aims to make the original PS2 game convenient to launch and configure like a Windows title, without rewriting its game engine. It is **not** a native PC port or a game download. This repository is independent from the Undercover PS2/Wii → Carbon PC native-engine conversion research project.
 
-> **Status: prototype 0.4 source code, not yet gameplay-validated.** The first milestone is a standalone Windows launcher. Native in-game graphics settings, keyboard-specific button glyphs, and a PC-style pause menu are **future work**, not features shipped here.
+> **Status: prototype 0.5 input UX foundation; the developer has confirmed real PS2 gameplay through 0.3, while the later features still need in-game validation.** The first milestone is a standalone Windows launcher. Native in-game graphics settings, keyboard-specific button glyphs, and a PC-style pause menu are **future work**, not features shipped here.
 
 ## What works in the first prototype
 
@@ -83,7 +83,10 @@ The **Build** workflow compiles the Windows launcher and runs the core smoke che
 | 0.2b: Automatic PCSX2 input profiles and complete first-run wizard | Planned |
 | 0.3: Session companion menu (external Windows panel) | Experimental source implemented; in-game integration still research |
 | 0.4: Keyboard glyph texture-pack workflow and safe importer | Foundation implemented; first real sprites pending |
-| 0.5: Graphics/performance and widescreen presets | Testing required |
+| 0.5: PC prompt-label suggestions and name-entry grid planning | Foundation implemented; no emulator keyboard injection |
+| 0.6: Real in-game keyboard prompts and input themes | Awaiting texture dumps and in-game testing |
+| 0.7: Direct keyboard name entry / native-feeling text input | Research required |
+| 0.8: Graphics/performance and widescreen presets | Testing required |
 | 1.0: Polished, portable PC-like experience | Long-term |
 
 Not every graphics change can be safely applied while PS2 emulation is running. Some options will require restarting the emulator. Keyboard input already works through PCSX2's mapping; displaying **keyboard glyphs inside the emulated game** is a separate texture/patch project.
@@ -112,3 +115,12 @@ PCSX2 command-line reference: [PCSX2 official CLI documentation](https://pcsx2.n
 - See the [glyph dumping and authoring guide](docs/GLYPH_PACKS.md) for capturing the actual PS2 prompt atlases. The user must enable **Load Textures** in PCSX2 before the replacement images appear in-game.
 
 **Version 0.4 is a technical foundation, not a verified visual mod or dynamic keyboard/gamepad UI switcher.**
+
+## Prototype 0.5: PC input and name-entry planning
+
+- **PC input / name-entry lab...** in the launcher edits ten proposed PC key labels (six shown directly in the supplied name-entry screenshot plus D-pad navigation). Labels are saved in launcher JSON and checked for duplicate assignments. **This does not rebind PCSX2 or edit Undercover.**
+- Includes **original vector SVG keycaps** for Enter, Esc, Backspace, F, Q and E in `assets/pc-keycaps/`. These are design sources without any PCSX2 replacement hashes. Actual in-game replacements still need Undercover's texture dump captures.
+- The **name-entry grid planner** previews possible D-pad moves from a presumed `A` starting cell. It does not send input and its navigation assumptions are unverified.
+- The screenshot of actual 0.3 gameplay is now documented in [PC input experience](docs/PC_INPUT_EXPERIENCE.md), with a staged plan for real glyph replacements, controller themes, and eventual direct text typing.
+
+**0.5 does not yet provide an integrated PS2 menu, automatic keyboard profile or actual direct typing.**
