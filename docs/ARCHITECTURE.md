@@ -29,3 +29,9 @@ Next: guided PCSX2 setup, optional per-game settings/graphics presets without cl
 ## Reference
 
 Official PCSX2 CLI: https://pcsx2.net/docs/advanced/cli/
+
+## Prototype 0.2a: Disc identity and setup guidance
+
+`Ps2DiscIdentifier` reads bounded ISO9660 directory entries from an uncompressed ISO and matches the PS2 `SYSTEM.CNF` `BOOT2` serial to a documented Undercover serial list. It never treats filenames as proof of identity, never modifies disc bytes, and does not decode CHD/CSO/ZSO/GZ. A foreign/unknown/unsupported image prompts the user to confirm before launch. The `InputGuideForm` documents manual PCSX2 controller mapping but does not mutate PCSX2 settings.
+
+See `docs/GAME_IDENTIFICATION.md` for supported serials, threat model, and limitations.
