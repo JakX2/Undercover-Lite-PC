@@ -680,6 +680,99 @@ internal static class Program
             ExpectThrows<ArgumentNullException>(() =>
                 SettingsHubPatch.Merge(null!, hubBaseline, hubOriginal),
                 "settings hub refuses null target instead of destroying configuration");
+            // UI-2: edits the verified isolated PCSX2 Qt GS global key only,
+            // keeping every unrelated setting, with a full-byte backup.
+            var gsData = Path.Combine(temp, "graphics-adapter-test");
+            var gsIni = Path.Combine(gsData, "PCSX2", "inis", "PCSX2.ini");
+            var gsSettings = new LauncherSettings { IsolatePcsx2Data = true };
+            Check(Pcsx2GraphicsAdapter.FindExistingIni(gsData) is null &&
+                  !Directory.Exists(gsData),
+                "PCSX2 graphics discovery never creates emulator files");
+            ExpectThrows<FileNotFoundException>(() =>
+                Pcsx2GraphicsAdapter.Inspect(gsSettings, gsData),
+                "graphics editor refuses to invent PCSX2.ini before emulator setup");
+            Directory.CreateDirectory(Path.GetDirectoryName(gsIni)!);
+            string config =
+                "# sample settings\r\n[UI]\r\nLanguage = en\r\n\r\n" +
+                "[EmuCore/GS]\r\nRenderer = 14\r\nupscale_multiplier = 2.0\r\n" +
+                "filter = 2\r\n\r\n[Hotkeys]\r\nTogglePause = Keyboard/F12\r\n";
+            File.WriteAllText(gsIni, config);
+            var before = Pcsx2GraphicsAdapter.Inspect(gsSettings, gsData);
+            Check(before.HasExplicitSetting && before.CurrentScale == 2f &&
+                  before.FilePath == gsIni,
+                "reads exact PCSX2 2.8.2 EmuCore/GS upscale_multiplier");
+            Check(Pcsx2GraphicsAdapter.AllowedMultipliers.SequenceEqual([1, 2, 3, 4, 6]),
+                "graphics UI offers only conservative supported scale values");
+            string backup = Pcsx2GraphicsAdapter.Apply(gsSettings, gsData, before, 3);
+            string afterIni = File.ReadAllText(gsIni);
+            Check(File.Exists(backup) && File.ReadAllText(backup) == config,
+                "original PCSX2.ini is preserved byte-for-byte in a backup");
+            Check(afterIni.Contains("upscale_multiplier = 3.0\r\n") &&
+                  afterIni.Contains("[UI]\r\nLanguage = en\r\n") &&
+                  afterIni.Contains("Renderer = 14\r\n") &&
+                  afterIni.Contains("filter = 2\r\n") &&
+                  afterIni.Contains("[Hotkeys]\r\nTogglePause = Keyboard/F12\r\n"),
+                "only GS multiplier is updated while preserving other options and CRLF");
+            var newSnapshot = Pcsx2GraphicsAdapter.Inspect(gsSettings, gsData);
+            Check(newSnapshot.CurrentScale == 3f &&
+                  Pcsx2GraphicsAdapter.Apply(gsSettings, gsData, newSnapshot, 3) == "",
+                "unchanged graphics setting is a no-op without additional backup");
+            ExpectThrows<IOException>(() =>
+                Pcsx2GraphicsAdapter.Apply(gsSettings, gsData, before, 4),
+                "stale preview is refused to avoid clobbering PCSX2 external edits");
+            File.AppendAllText(gsIni, "; user-customized\r\n");
+            ExpectThrows<IOException>(() =>
+                Pcsx2GraphicsAdapter.Apply(gsSettings, gsData, newSnapshot, 4),
+                "concurrent customization makes adapter refuse write");
+            Check(File.ReadAllText(gsIni).Contains("; user-customized"),
+                "refused graphics write keeps concurrent PCSX2 config changes intact");
+            ExpectThrows<ArgumentOutOfRangeException>(() =>
+                Pcsx2GraphicsAdapter.Apply(gsSettings, gsData, newSnapshot, 24),
+                "unsafe out-of-range resolution multipliers are not applied");
+            ExpectThrows<InvalidOperationException>(() =>
+                Pcsx2GraphicsAdapter.Inspect(new LauncherSettings { IsolatePcsx2Data = false }, gsData),
+                "shared non-isolated PCSX2 configuration is not accessed by automatic adapter");
+            var gsMissingSection = Path.Combine(temp, "graphics-missing-section");
+            var missingIni = Path.Combine(gsMissingSection, "inis", "PCSX2.ini");
+            Directory.CreateDirectory(Path.GetDirectoryName(missingIni)!);
+            File.WriteAllText(missingIni, "[UI]\nSetupWizardIncomplete = false\n");
+            var defaultSnapshot = Pcsx2GraphicsAdapter.Inspect(gsSettings, gsMissingSection);
+            Check(defaultSnapshot.CurrentScale == 1f && !defaultSnapshot.HasExplicitSetting,
+                "missing GS multiplier is interpreted as PCSX2 default 1x without editing");
+            Pcsx2GraphicsAdapter.Apply(gsSettings, gsMissingSection, defaultSnapshot, 4);
+            Check(File.ReadAllText(missingIni).Contains("[EmuCore/GS]\nupscale_multiplier = 4.0\n"),
+                "only missing graphics section/key appended to an existing PCSX2 config");
+            var gsBomData = Path.Combine(temp, "graphics-utf8-bom");
+            var gsBomPath = Path.Combine(gsBomData, "PCSX2", "inis", "PCSX2.ini");
+            Directory.CreateDirectory(Path.GetDirectoryName(gsBomPath)!);
+            File.WriteAllBytes(gsBomPath, System.Text.Encoding.UTF8.GetPreamble()
+                .Concat(System.Text.Encoding.UTF8.GetBytes("[EmuCore/GS]\nupscale_multiplier = 2.0\n[UI]\nLanguage = en\n")).ToArray());
+            var gsBomBefore = Pcsx2GraphicsAdapter.Inspect(gsSettings, gsBomData);
+            Check(gsBomBefore.CurrentScale == 2f, "UTF-8 BOM before first GS section is recognized");
+            Pcsx2GraphicsAdapter.Apply(gsSettings, gsBomData, gsBomBefore, 6);
+            var bomWritten = File.ReadAllBytes(gsBomPath);
+            Check(bomWritten.Take(3).SequenceEqual(new byte[] { 239, 187, 191 }) &&
+                  File.ReadAllText(gsBomPath).Contains("upscale_multiplier = 6.0") &&
+                  File.ReadAllText(gsBomPath).Split("[EmuCore/GS]").Length == 2,
+                "graphics adapter preserves UTF8 BOM and does not duplicate first GS section");
+            File.WriteAllText(gsBomPath, "[EmuCore/GS]\nupscale_multiplier = 2.0\nupscale_multiplier = 3.0\n");
+            ExpectThrows<InvalidDataException>(() =>
+                Pcsx2GraphicsAdapter.Inspect(gsSettings, gsBomData),
+                "ambiguous duplicate multiplier keys are rejected rather than guessed");
+            File.WriteAllText(gsBomPath, "[EmuCore/GS]\nupscale_multiplier = 2.0\n[EmuCore/GS]\n");
+            ExpectThrows<InvalidDataException>(() =>
+                Pcsx2GraphicsAdapter.Inspect(gsSettings, gsBomData),
+                "duplicate graphics sections are rejected before any modification");
+            var dualData = Path.Combine(temp, "graphics-double-config");
+            var dualNested = Path.Combine(dualData, "PCSX2", "inis", "PCSX2.ini");
+            var dualDirect = Path.Combine(dualData, "inis", "PCSX2.ini");
+            Directory.CreateDirectory(Path.GetDirectoryName(dualNested)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(dualDirect)!);
+            File.WriteAllText(dualNested, "[UI]\n");
+            File.WriteAllText(dualDirect, "[UI]\n");
+            ExpectThrows<InvalidDataException>(() =>
+                Pcsx2GraphicsAdapter.FindExistingIni(dualData),
+                "ambiguous direct and nested PCSX2 data locations require manual verification");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
