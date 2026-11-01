@@ -38,3 +38,10 @@ Original player-dumped PS2 textures are never included. Source: `tools/build_syn
 Known hash captures: Cross, Circle, Triangle, Start, Select, L1, L2, R1, R2, R3. The standalone Square prompt remains unknown. The controller diagram names Square's corresponding **X** key because the PS2 input action is known, not because its isolated glyph has been captured. Arrow keys are PS2 D-pad and IJKL the right analog stick under the existing `0.9` input profile.
 
 **Do not use this 0.11 theme with `menu-reference` or a different custom PCSX2 input profile**, unless you verify the mappings and update the artwork.
+
+
+### Read-only Setup Doctor check
+
+Undercover Lite's **Setup Doctor** now checks for an intact `UndercoverLite-DrivingFirst.ini` and whether the registered managed glyph theme is the old known-mismatched controller artwork or the new `matched driving keys 0.11` theme. It reports a warning for the known old artwork, or a provisional declared-key match when the 0.11 theme and unchanged input-profile file are both present.
+
+**This is not proof of what the live PCSX2 process is using.** The launcher cannot yet verify which profile Undercover has selected in PCSX2 or whether a texture was edited outside the theme manager. A copied safe report contains only findings, not local paths or game files.
