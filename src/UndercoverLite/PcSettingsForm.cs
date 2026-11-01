@@ -23,6 +23,10 @@ public sealed class PcSettingsForm : Form
     private LauncherSettings _baseline;
     private readonly LauncherSettings _initial;
     private readonly ComboBox _displayMode = new();
+    private readonly ComboBox _internalScale = new();
+    private readonly Button _scaleApply = new();
+    private readonly Label _scaleState = new();
+    private Pcsx2GraphicsAdapter.Snapshot? _scaleSnapshot;
     private readonly CheckBox _fastBoot = new();
     private readonly CheckBox _hideEmulator = new();
     private readonly CheckBox _isolated = new();
@@ -44,7 +48,7 @@ public sealed class PcSettingsForm : Form
         _baseline = originalSaved;
         _initial = displayedFromLauncher;
         _gameRunning = gameRunning;
-        Text = "Undercover Lite PC | PC Settings (UI-1)";
+        Text = "Undercover Lite PC | PC Settings (UI-2)";
         BackColor = Background;
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
@@ -56,6 +60,7 @@ public sealed class PcSettingsForm : Form
         Populate(_initial);
         _loading = false;
         RefreshDirty();
+        RefreshGraphicsScale();
     }
 
     private void BuildUi()
@@ -274,8 +279,13 @@ public sealed class PcSettingsForm : Form
         Row(display, "Aspect ratio", "A widescreen output mode does not guarantee correctly scaled HUD.",
             Unavailable(), "Requires verified game/PCSX2 setup");
         var render = Group(list, "Rendering");
-        Row(render, "Internal resolution", "Higher rendering scale can improve image clarity.",
-            Unavailable(), "Requires verified PCSX2 configuration adapter");
+        Row(render, "Internal resolution", "Adjusts the isolated PCSX2 global renderer scale. A per-game override may take priority.",
+            ScaleSelector(), "Real PCSX2 setting · Separate Apply + backup · Next boot");
+        _scaleState.ForeColor = Muted;
+        _scaleState.TextAlign = ContentAlignment.MiddleLeft;
+        _scaleState.AutoEllipsis = true;
+        Row(render, "Graphics configuration", "The game must be stopped. Backups are kept alongside PCSX2.ini.",
+            _scaleState, "Read-only state · Never writes game-specific overrides");
         Row(render, "Anisotropic filtering", "Sharper textures on oblique surfaces.",
             Unavailable(), "Requires PCSX2 integration");
         Row(render, "Texture replacements", "Manage installed UI button glyphs and controller artwork.",
@@ -284,6 +294,111 @@ public sealed class PcSettingsForm : Form
             Unavailable(), "Requires PCSX2 integration");
         Row(render, "Advanced image effects", "Motion blur, bloom and FPS changes need game-specific work.",
             Pending(), "Not implemented");
+    }
+
+    private Control ScaleSelector()
+    {
+        var panel = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, Dock = DockStyle.Fill };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 59));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 41));
+        _internalScale.DropDownStyle = ComboBoxStyle.DropDownList;
+        _internalScale.BackColor = Field;
+        _internalScale.ForeColor = Color.White;
+        _internalScale.Dock = DockStyle.Fill;
+        _internalScale.Margin = new Padding(1, 8, 3, 8);
+        _internalScale.Items.AddRange(new object[]
+        {
+            "Native (1×)", "2× (~720p)", "3× (~1080p)", "4× (~1440p)", "6× (~2160p)"
+        });
+        _internalScale.SelectedIndexChanged += (_, _) => UpdateScaleButton();
+        panel.Controls.Add(_internalScale, 0, 0);
+        _scaleApply.Text = "Apply scale...";
+        StyleButton(_scaleApply);
+        _scaleApply.Margin = new Padding(2, 4, 1, 4);
+        _scaleApply.Click += (_, _) => SaveGraphicsScale();
+        panel.Controls.Add(_scaleApply, 1, 0);
+        _scaleApply.Enabled = false;
+        return panel;
+    }
+
+    private int SelectedScale() => _internalScale.SelectedIndex switch
+    {
+        0 => 1, 1 => 2, 2 => 3, 3 => 4, 4 => 6, _ => 0
+    };
+
+    private void RefreshGraphicsScale()
+    {
+        try
+        {
+            var persisted = _store.Load();
+            if (!persisted.IsolatePcsx2Data)
+                throw new InvalidOperationException("Isolated PCSX2 data is disabled.");
+            _scaleSnapshot = Pcsx2GraphicsAdapter.Inspect(persisted, _store.Pcsx2DataDirectory);
+            int index = Array.IndexOf(Pcsx2GraphicsAdapter.AllowedMultipliers,
+                (int)_scaleSnapshot.CurrentScale);
+            _internalScale.Enabled = !_gameRunning;
+            _internalScale.SelectedIndex =
+                index >= 0 && _scaleSnapshot.CurrentScale == Pcsx2GraphicsAdapter.AllowedMultipliers[index]
+                    ? index : -1;
+            _scaleState.Text = $"{_scaleSnapshot.CurrentScale:0.##}× global scale" +
+                (_scaleSnapshot.HasExplicitSetting ? "" : " (PCSX2 default)");
+            if (_gameRunning) _scaleState.Text += " · Exit game before editing";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   InvalidDataException or InvalidOperationException or ArgumentException)
+        {
+            _scaleSnapshot = null;
+            _internalScale.SelectedIndex = -1;
+            _internalScale.Enabled = false;
+            _scaleState.Text = ex is FileNotFoundException
+                ? "Run PCSX2 setup first to create its configuration."
+                : "Graphics config unavailable: " + ex.Message;
+        }
+        UpdateScaleButton();
+    }
+
+    private void UpdateScaleButton()
+    {
+        _scaleApply.Enabled = !_gameRunning && _scaleSnapshot is not null &&
+            SelectedScale() != 0 && SelectedScale() != _scaleSnapshot.CurrentScale &&
+            _isolated.Checked;
+    }
+
+    private void SaveGraphicsScale()
+    {
+        if (_scaleSnapshot is null || _gameRunning) return;
+        try
+        {
+            var persisted = _store.Load();
+            if (!persisted.IsolatePcsx2Data || !_isolated.Checked)
+                throw new InvalidOperationException(
+                    "Save/enable isolated PCSX2 data first; global/shared PCSX2 settings will never be edited.");
+            int multiplier = SelectedScale();
+            if (multiplier == 0) return;
+            var confirmed = MessageBox.Show(this,
+                $"Set the isolated PCSX2 internal rendering resolution to {multiplier}×?\n\n" +
+                "Please CLOSE every PCSX2 window first. This modifies the existing " +
+                "isolated PCSX2.ini [EmuCore/GS] upscale_multiplier setting only.\n" +
+                "A timestamped backup of the original file will be kept next to it.\n\n" +
+                "This is the GLOBAL setting for this isolated emulator profile. " +
+                "Undercover-specific graphics overrides may still take precedence.\n\n" +
+                "Proceed?",
+                "Apply PCSX2 graphics scale",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (confirmed != DialogResult.Yes) return;
+            var backup = Pcsx2GraphicsAdapter.Apply(
+                persisted, _store.Pcsx2DataDirectory, _scaleSnapshot, multiplier);
+            RefreshGraphicsScale();
+            _status.Text = string.IsNullOrEmpty(backup)
+                ? "PCSX2 graphics scale was already set."
+                : $"{multiplier}× saved in isolated PCSX2.ini with an original-file backup. Restart PCSX2.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message + "\n\nNo automatic retry was attempted.",
+                "Could not apply graphics change", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            RefreshGraphicsScale();
+        }
     }
 
     private void BuildControls(TabPage tab)
@@ -349,6 +464,7 @@ public sealed class PcSettingsForm : Form
         Connect(_fastBoot);
         Connect(_hideEmulator);
         Connect(_isolated);
+        _isolated.CheckedChanged += (_, _) => UpdateScaleButton();
         Connect(_companionHotkey);
         Row(startup, "Fast boot", "Skip the PS2 startup animation.", _fastBoot,
             "Available now · Next launch");
@@ -477,6 +593,7 @@ public sealed class PcSettingsForm : Form
             _baseline = edited;
             SavedChanges = true;
             RefreshDirty();
+            RefreshGraphicsScale();
             _status.Text = "Launcher settings saved. Changes take effect on the next launch.";
             return true;
         }
