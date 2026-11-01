@@ -153,3 +153,11 @@ A **Setup Doctor...** link in the Windows launcher now checks PCSX2 executable s
 
 The doctor **never launches PCSX2 or modifies your configuration, game files or textures**. Its **Copy safe report** action excludes local paths and filenames, so troubleshooting information can be shared more safely. BIOS readiness, live controller bindings and texture-loading settings remain unverified and must be tested in PCSX2. See [Setup Doctor 0.8 guide](docs/SETUP_DOCTOR_0_8.md).
 
+
+
+## Prototype 0.9: Real keyboard driving profile (opt-in)
+
+The launcher now creates a standalone, game-specific PCSX2 Qt **UndercoverLite-DrivingFirst** input profile from **PC input / name-entry lab**. This is the first implemented **button-to-key configuration**, not just key-label artwork. The profile matches the confirmed Cross → W replacement and the game's PS2 driving scheme: W accelerate, S brake, A/D steering, Space handbrake, Shift nitrous, Q/E gear changes, arrow keys D-pad navigation, and F Start/Pause.
+
+The install is **opt-in, isolated to the Undercover Lite PCSX2 data folder and never overwrites differing existing profiles**. You must still assign it to the game under **PCSX2 > Undercover Properties > Summary > Input Profile**; Undercover Lite does not edit shared controls or force the game to use a profile. Key behavior is the same in menus and driving, so W = Accept and Space = Back are unavoidable with this static PS2 button mapping. The result has passed source-level tests only until we receive an actual in-game control test. See [0.9 input-profile guide](docs/KEYBOARD_PROFILE_0_9.md).
+

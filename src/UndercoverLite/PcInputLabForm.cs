@@ -11,15 +11,17 @@ namespace UndercoverLite;
 public sealed class PcInputLabForm : Form
 {
     private readonly LauncherSettingsStore _store;
+    private readonly bool _gameRunning;
     private readonly Dictionary<string, ComboBox> _choices = new();
     private readonly TextBox _desiredName = new() { Text = "DAVID", MaxLength = 24 };
     private readonly TextBox _plan = new();
     private readonly Label _message = new();
 
-    public PcInputLabForm(LauncherSettingsStore store)
+    public PcInputLabForm(LauncherSettingsStore store, bool gameRunning = false)
     {
         _store = store;
-        Text = "Undercover Lite PC | PC input lab";
+        _gameRunning = gameRunning;
+        Text = "Undercover Lite PC | PC input lab (0.9)";
         Size = new Size(785, 800);
         MinimumSize = new Size(650, 640);
         StartPosition = FormStartPosition.CenterParent;
@@ -54,9 +56,9 @@ public sealed class PcInputLabForm : Form
         main.Controls.Add(new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.FromArgb(195, 204, 218),
-            Text = "Proposed keyboard labels for Undercover's original PS2 prompts. " +
-                   "Saving these labels does NOT change PCSX2 controller mappings or install textures. " +
-                   "Map the corresponding buttons manually in PCSX2 2.8.2."
+            Text = "Key-label suggestions are separate from the driving-first preset. " +
+                   "Our optional PCSX2 profile maps W to Cross (accelerate AND menu accept). " +
+                   "Install below, then assign it to Undercover in PCSX2 Game Properties."
         }, 0, 1);
 
         var mapping = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 10 };
@@ -110,9 +112,10 @@ public sealed class PcInputLabForm : Form
         _plan.Text = "Place the selection on A first. This previews only a POSSIBLE D-pad sequence. " +
                      "It will not type in the game; grid navigation and cursor behavior need testing.";
         main.Controls.Add(_plan, 0, 5);
-        var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
-        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
-        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3 };
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
         _message.Dock = DockStyle.Fill;
         _message.ForeColor = Color.FromArgb(255, 182, 64);
         _message.TextAlign = ContentAlignment.MiddleLeft;
@@ -120,6 +123,9 @@ public sealed class PcInputLabForm : Form
         var save = NewButton("Save key-label suggestions");
         save.Click += (_, _) => Save();
         actions.Controls.Add(save, 1, 0);
+        var install = NewButton("Install driving profile");
+        install.Click += (_, _) => InstallDrivingProfile();
+        actions.Controls.Add(install, 2, 0);
         main.Controls.Add(actions, 0, 6);
     }
 
@@ -179,6 +185,61 @@ public sealed class PcInputLabForm : Form
         {
             _message.Text = "Not saved. Review key assignments.";
             MessageBox.Show(this, ex.Message, "Invalid key layout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private void InstallDrivingProfile()
+    {
+        if (_gameRunning)
+        {
+            _message.Text = "Close the running game and PCSX2 before installing profiles.";
+            return;
+        }
+        try
+        {
+            var settings = _store.Load();
+            if (!settings.IsolatePcsx2Data)
+                throw new InvalidOperationException("Enable isolated PCSX2 settings in the launcher first.");
+
+            var preview = UndercoverKeyboardProfile.Inspect(_store.Pcsx2DataDirectory);
+            if (preview.Status == UndercoverKeyboardProfile.InstallStatus.Conflict)
+            {
+                _message.Text = "A different input profile exists. No files changed.";
+                MessageBox.Show(this,
+                    "A profile with this name already exists, but its content differs. " +
+                    "Undercover Lite will not overwrite it. Inspect or back it up manually.",
+                    "Existing input profile", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (preview.Status == UndercoverKeyboardProfile.InstallStatus.AlreadyInstalled)
+            {
+                _message.Text = "Driving-first profile already installed. Select it in PCSX2.";
+                return;
+            }
+            var approved = MessageBox.Show(this,
+                "Install UndercoverLite-DrivingFirst into the isolated PCSX2 inputprofiles folder?\n\n" +
+                "W=Accelerate, S=Brake, A/D=Steer, Space=Handbrake, Shift=Nitrous, " +
+                "Q/E=Gears, X=Speedbreaker, F=Pause, arrow keys=menu D-pad.\n\n" +
+                "Buttons are reused: W will also confirm menus, Space will also go back, " +
+                "and F will act as Start in name entry. " +
+                "The profile does not auto-activate, modify shared bindings, or change textures. " +
+                "You must assign it in PCSX2 Game Properties > Summary > Input Profile.",
+                "Install Undercover keyboard profile",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (approved != DialogResult.Yes) return;
+            UndercoverKeyboardProfile.Install(settings, _store.Pcsx2DataDirectory);
+            _message.Text = "Profile installed. Assign it under Undercover Game Properties.";
+            MessageBox.Show(this,
+                "Input profile created. Shared controller mappings remain untouched.\n\n" +
+                "In PCSX2, right-click Undercover in the game list > Properties > Summary > " +
+                "Input Profile > UndercoverLite-DrivingFirst.\n\n" +
+                "Restart the game and verify steering, gear controls and menu navigation.",
+                "Profile created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            _message.Text = "Input profile was not installed.";
+            MessageBox.Show(this, ex.Message, "Input profile", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 

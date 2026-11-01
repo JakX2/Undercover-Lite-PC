@@ -414,6 +414,71 @@ internal static class Program
                 "non-isolated profile warns that PCSX2 texture location requires manual verification");
             Check(!Directory.Exists(healthy.TextureSearchDirectory),
                 "diagnostics don't create explicitly selected texture folders");
+            // 0.9: real PCSX2 Qt input profile generation, without changing shared mappings.
+            var inputProfileData = Path.Combine(temp, "qt-profile-test");
+            var name = UndercoverKeyboardProfile.FileName;
+            var first = UndercoverKeyboardProfile.Inspect(inputProfileData);
+            Check(first.Status == UndercoverKeyboardProfile.InstallStatus.New &&
+                  first.DestinationFile == Path.Combine(inputProfileData, "PCSX2", "inputprofiles", name),
+                "driving-first profile resolves isolated PCSX2 2.8.2 path");
+            Check(!Directory.Exists(inputProfileData),
+                "previewing keyboard profile does not create or modify emulator folders");
+            var bindings = UndercoverKeyboardProfile.GetBindings();
+            Check(bindings.Count == 22 && bindings.Select(x => x.Ps2).Distinct().Count() == bindings.Count,
+                "all PS2 controls use unique profile INI fields");
+            Check(bindings.Select(x => x.PcKey).Distinct().Count() == bindings.Count,
+                "driving-first preset avoids duplicate host keys");
+            var rendered = UndercoverKeyboardProfile.RenderIni();
+            Check(rendered.Contains("[Pad1]\nType = DualShock2") &&
+                  rendered.Contains("Cross = Keyboard/W") &&
+                  rendered.Contains("Circle = Keyboard/S") &&
+                  rendered.Contains("Triangle = Keyboard/Space") &&
+                  rendered.Contains("Square = Keyboard/X") &&
+                  rendered.Contains("R2 = Keyboard/Shift") &&
+                  rendered.Contains("LLeft = Keyboard/A") &&
+                  rendered.Contains("LRight = Keyboard/D") &&
+                  rendered.Contains("Up = Keyboard/Up") &&
+                  rendered.Contains("Start = Keyboard/F"),
+                "profile encodes verified Undercover driving-first PS2 mappings");
+            var profileSettings = new LauncherSettings { IsolatePcsx2Data = true };
+            var installed = UndercoverKeyboardProfile.Install(profileSettings, inputProfileData);
+            Check(installed.Status == UndercoverKeyboardProfile.InstallStatus.AlreadyInstalled,
+                "new keyboard profile is created and can be read back");
+            Check(File.ReadAllText(installed.DestinationFile) == rendered,
+                "generated PCSX2 keyboard profile round-trips exact UTF-8 INI contents");
+            Check(!File.Exists(Path.Combine(inputProfileData, "PCSX2", "inis", "PCSX2.ini")),
+                "installing input profile never changes shared PCSX2.ini");
+            Check(UndercoverKeyboardProfile.Inspect(inputProfileData).Status ==
+                  UndercoverKeyboardProfile.InstallStatus.AlreadyInstalled,
+                "already installed keyboard profile detected by content");
+            var originalBytes = File.ReadAllBytes(installed.DestinationFile);
+            UndercoverKeyboardProfile.Install(profileSettings, inputProfileData);
+            Check(File.ReadAllBytes(installed.DestinationFile).SequenceEqual(originalBytes),
+                "idempotent installation preserves existing identical profile bytes");
+            File.WriteAllText(installed.DestinationFile, "# user modified profile\n");
+            Check(UndercoverKeyboardProfile.Inspect(inputProfileData).Status ==
+                  UndercoverKeyboardProfile.InstallStatus.Conflict,
+                "modified profile recognized as a conflict");
+            ExpectThrows<IOException>(() =>
+                UndercoverKeyboardProfile.Install(profileSettings, inputProfileData),
+                "profile installer refuses to overwrite modified user settings");
+            Check(File.ReadAllText(installed.DestinationFile) == "# user modified profile\n",
+                "nonidentical user's profile is left completely untouched");
+            var externalSettings = new LauncherSettings { IsolatePcsx2Data = false };
+            var externalDir = Path.Combine(temp, "another-emulator-data");
+            ExpectThrows<InvalidOperationException>(() =>
+                UndercoverKeyboardProfile.Install(externalSettings, externalDir),
+                "profile auto-installer refuses to alter non-isolated external PCSX2 data");
+            Check(!Directory.Exists(externalDir), "refusal does not create external profile data");
+            var legacyProfileData = Path.Combine(temp, "legacy-profile-layout");
+            Directory.CreateDirectory(Path.Combine(legacyProfileData, "inputprofiles"));
+            Check(UndercoverKeyboardProfile.GetProfileDirectory(legacyProfileData) ==
+                  Path.Combine(legacyProfileData, "inputprofiles"),
+                "old direct inputprofiles layout remains supported");
+            Directory.CreateDirectory(Path.Combine(legacyProfileData, "PCSX2"));
+            Check(UndercoverKeyboardProfile.GetProfileDirectory(legacyProfileData) ==
+                  Path.Combine(legacyProfileData, "PCSX2", "inputprofiles"),
+                "nested PCSX2 profile directory wins when PCSX2 subdirectory exists");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
