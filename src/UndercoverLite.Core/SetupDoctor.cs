@@ -20,7 +20,7 @@ public static class SetupDoctor
         {
             var lines = new List<string>
             {
-                "Undercover Lite PC | Setup Doctor 0.14",
+                "Undercover Lite PC | Setup Doctor 0.15",
                 "PCSX2 target: 2.8.2 Qt (actual binary version not inspected)",
                 "Disc: " + (VerifiedSerial ?? "unverified / not selected"),
                 $"Blocking findings: {Blockers}; attention items: {ActionItems - Blockers}",
@@ -240,6 +240,18 @@ public static class SetupDoctor
                     "Theme and saved profile compatibility could not be determined safely.");
             }
         }
+
+        var graphics = Pcsx2GameGraphicsAudit.Inspect(settings, pcsx2DataDirectory);
+        var graphicsLevel = graphics.HasPossibleDifferentOverride
+            ? Severity.ActionNeeded
+            : graphics.Status is Pcsx2GameGraphicsAudit.State.MultipleCrcs or
+                                 Pcsx2GameGraphicsAudit.State.InvalidConfiguration
+                ? Severity.ActionNeeded
+                : graphics.Status == Pcsx2GameGraphicsAudit.State.OverridePresent &&
+                  graphics.GlobalScale == graphics.GameScale
+                    ? Severity.Ready : Severity.Notice;
+        Add(graphicsLevel, "Saved game graphics override",
+            graphics.Summary, graphics.NextStep);
 
         Add(Severity.Notice, "Runtime verification",
             "BIOS readiness, current PCSX2 Load Textures setting, key bindings and actual game rendering are not checked.",
