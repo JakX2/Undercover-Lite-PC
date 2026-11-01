@@ -339,6 +339,77 @@ internal static class Program
                 "conflicting foreign icon bytes preserved");
             Check(ManagedGlyphThemes.ActivePack("SLUS-21801", managedData) is null,
                 "foreign conflict does not leave behind an active managed state");
+            // 0.8: read-only setup diagnosis, privacy-safe report, and real texture folder regression.
+            var doctorData = Path.Combine(temp, "doctor-pcsx2-data");
+            var missingReport = SetupDoctor.Check(new LauncherSettings(), doctorData);
+            Check(missingReport.Blockers == 2 &&
+                  missingReport.Findings.Any(f => f.Topic == "PCSX2 executable" &&
+                      f.Level == SetupDoctor.Severity.Blocked) &&
+                  missingReport.Findings.Any(f => f.Topic == "Game image" &&
+                      f.Level == SetupDoctor.Severity.Blocked),
+                "Setup Doctor blocks missing emulator and game selections");
+            Check(!Directory.Exists(doctorData), "read-only diagnostics do not create PCSX2 data");
+            Check(!missingReport.CopyableReport().Contains(temp, StringComparison.OrdinalIgnoreCase),
+                "shareable diagnostic report does not leak filesystem paths");
+
+            var healthy = new LauncherSettings
+            {
+                Pcsx2Executable = exe, GameImage = validDisc, IsolatePcsx2Data = true
+            };
+            // A nonexistent fake exe named "PCSX2 with spaces" is still checked by basename, not executed.
+            var foundReport = SetupDoctor.Check(healthy, doctorData);
+            Check(foundReport.Blockers == 0 && foundReport.VerifiedSerial == "SLUS-21801",
+                "Setup Doctor recognizes valid ISO without launching emulator");
+            Check(foundReport.Findings.Any(f => f.Topic == "PCSX2 executable" &&
+                      f.Level == SetupDoctor.Severity.ActionNeeded),
+                "nonstandard executable name gives an actionable warning");
+            var reportText = foundReport.CopyableReport();
+            Check(reportText.Contains("SLUS-21801") && !reportText.Contains(temp, StringComparison.OrdinalIgnoreCase) &&
+                  !reportText.Contains(Path.GetDirectoryName(validDisc)!, StringComparison.OrdinalIgnoreCase),
+                "copyable report includes serial but omits absolute game path");
+            healthy.Pcsx2Executable = portableExe;
+            var qtReport = SetupDoctor.Check(healthy, doctorData);
+            Check(qtReport.Findings.Any(f => f.Topic == "PCSX2 executable" &&
+                      f.Level == SetupDoctor.Severity.Ready),
+                "correct pcsx2-qt.exe name and existing file are detected");
+            healthy.GameImage = compressed;
+            Check(SetupDoctor.Check(healthy, doctorData).Findings.Any(f =>
+                f.Topic == "Game identification" && f.Level == SetupDoctor.Severity.ActionNeeded),
+                "CHD remains launchable but cannot be claimed as verified");
+            var differentIso = Path.Combine(temp, "other-test.iso");
+            WriteSyntheticIso(differentIso, "BOOT2 = cdrom0:\\SLUS_212.67;1\n");
+            healthy.GameImage = differentIso;
+            Check(SetupDoctor.Check(healthy, doctorData).Findings.Any(f =>
+                f.Topic == "Game identification" && f.Level == SetupDoctor.Severity.Blocked),
+                "Setup Doctor catches a confirmed different game");
+            healthy.GameImage = validDisc;
+
+            var doctorSearch = Path.Combine(doctorData, "PCSX2", "textures");
+            var doctorReplacement = Path.Combine(doctorSearch, "SLUS-21801", "replacements");
+            Directory.CreateDirectory(doctorReplacement);
+            File.WriteAllBytes(Path.Combine(doctorReplacement,
+                "fa7c4c608af78f38-99e1a7bd2d4d93c5-00001554.png"), [137, 80, 78, 71]);
+            File.WriteAllBytes(Path.Combine(doctorReplacement, "abcdefabcdefabcd-00001554.png"), [1, 2, 3]);
+            var atlasReport = SetupDoctor.Check(healthy, doctorData);
+            Check(atlasReport.Findings.Any(f => f.Topic == "Replacement textures" &&
+                f.Detail.Contains("2 PNG/DDS files; 1 match")),
+                "correct isolated 2.8.2 nested path detects actual Undercover glyph hash");
+            var legacyTextureDir = Path.Combine(doctorData, "textures");
+            Directory.CreateDirectory(legacyTextureDir);
+            File.WriteAllBytes(Path.Combine(legacyTextureDir, "misplaced.png"), [1, 2, 3]);
+            Check(SetupDoctor.Check(healthy, doctorData).Findings.Any(f =>
+                f.Topic == "Legacy texture directory" && f.Level == SetupDoctor.Severity.ActionNeeded),
+                "read-only doctor flags stale direct-textures installer layout");
+            healthy.TextureSearchDirectory = Path.Combine(temp, "custom-emulator-texture-dir");
+            Check(SetupDoctor.Check(healthy, doctorData).Findings.Any(f =>
+                f.Topic == "Texture search directory" && f.Level == SetupDoctor.Severity.Notice),
+                "explicit but missing custom texture directory produces a notice");
+            healthy.IsolatePcsx2Data = false;
+            Check(SetupDoctor.Check(healthy, doctorData).Findings.Any(f =>
+                f.Topic == "PCSX2 profile" && f.Level == SetupDoctor.Severity.ActionNeeded),
+                "non-isolated profile warns that PCSX2 texture location requires manual verification");
+            Check(!Directory.Exists(healthy.TextureSearchDirectory),
+                "diagnostics don't create explicitly selected texture folders");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
