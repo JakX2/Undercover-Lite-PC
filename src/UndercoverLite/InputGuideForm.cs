@@ -32,14 +32,17 @@ public sealed class InputGuideForm : Form
                    "2. Complete the PCSX2 BIOS wizard using your own PS2 BIOS.\n\n" +
                    "3. Open Settings > Controllers in PCSX2. Configure Controller Port 1. " +
                    "Select a controller or keyboard bindings there.\n\n" +
-                   "4. Suggested PC keyboard layout:\n" +
-                   "    WASD or arrows  : steering/navigation\n" +
-                   "    Enter            : confirm / Start\n" +
-                   "    Backspace        : back\n" +
-                   "    Left Shift       : nitrous (if assigned)\n" +
-                   "    Space            : handbrake (if assigned)\n\n" +
-                   "Map these keys to the corresponding PS2 controller buttons " +
-                   "used by your chosen in-game control scheme. Undercover Lite does not yet write PCSX2 input configuration.\n\n" +
+                   "4. Optional driving-first keyboard profile from PC Input Lab:\n" +
+                   "    W / S           : Accelerate / Brake\n" +
+                   "    A / D           : Steer left / right\n" +
+                   "    Space / Shift   : Handbrake / Nitrous\n" +
+                   "    Q / E           : Shift down / up\n" +
+                   "    X / F           : Speedbreaker / Pause (Start)\n" +
+                   "    Arrow keys      : PS2 D-pad menu navigation\n\n" +
+                   "The profile maps PS2 inputs, not contextual PC actions. " +
+                   "For example W also confirms menus and Space acts as Back.\n\n" +
+                   "To enable: close PCSX2, install from PC Input Lab, then select " +
+                   "UndercoverLite-DrivingFirst in Undercover Game Properties > Summary > Input Profile.\n\n" +
                    "5. Save changes in PCSX2, close its setup window and launch the game.\n\n" +
                    "Tip: USB/XInput controllers can be configured directly in PCSX2. " +
                    "Custom PC button glyphs and a true in-game PC options menu are future milestones."
