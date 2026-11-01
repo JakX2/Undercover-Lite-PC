@@ -773,6 +773,123 @@ internal static class Program
             ExpectThrows<InvalidDataException>(() =>
                 Pcsx2GraphicsAdapter.FindExistingIni(dualData),
                 "ambiguous direct and nested PCSX2 data locations require manual verification");
+            // UI-3: distinguish the saved serial+CRC game profile selection from
+            // merely-installed profile files and the *live* emulator state.
+            var selectionData = Path.Combine(temp, "game-input-inspection");
+            var selectionSettings = new LauncherSettings { IsolatePcsx2Data = true, GameImage = validDisc };
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData).Status ==
+                  Pcsx2GameInputInspector.Kind.ConfigurationMissing &&
+                  !Directory.Exists(selectionData),
+                "saved profile reader does not create emulator files before setup");
+            Check(Pcsx2GameInputInspector.Inspect(
+                new LauncherSettings { IsolatePcsx2Data = false, GameImage = validDisc },
+                selectionData).Status == Pcsx2GameInputInspector.Kind.UnsupportedFolder,
+                "external PCSX2 data is never silently inspected");
+            Check(Pcsx2GameInputInspector.Inspect(
+                new LauncherSettings { IsolatePcsx2Data = true, GameImage = compressed },
+                selectionData).Status == Pcsx2GameInputInspector.Kind.UnverifiedDisc,
+                "compressed disc serial remains unverified, not guessed from nearby INI names");
+            var selectionIni = Path.Combine(selectionData, "PCSX2", "inis", "PCSX2.ini");
+            var gameFolder = Path.Combine(selectionData, "PCSX2", "gamesettings");
+            var inputFolder = Path.Combine(selectionData, "PCSX2", "inputprofiles");
+            Directory.CreateDirectory(Path.GetDirectoryName(selectionIni)!);
+            File.WriteAllText(selectionIni,
+                "[Folders]\nGameSettings = gamesettings\nInputProfiles = inputprofiles\n" +
+                "[EmuCore/GS]\nupscale_multiplier = 3.0\n");
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData).Status ==
+                  Pcsx2GameInputInspector.Kind.NoGameFile,
+                "no per-game directory is reported as unknown, not automatically Shared");
+            Directory.CreateDirectory(gameFolder);
+            Directory.CreateDirectory(inputFolder);
+            var correctGameIni = Path.Combine(gameFolder, "SLUS-21801_A1B2C3D4.ini");
+            File.WriteAllText(Path.Combine(gameFolder, "SLES-55353_ABCDEF01.ini"),
+                "[EmuCore]\nInputProfileName = unrelated-profile\n");
+            File.WriteAllText(Path.Combine(gameFolder, "1234ABCD.ini"),
+                "[EmuCore]\nInputProfileName = legacy-unknown\n");
+            File.WriteAllText(correctGameIni,
+                "[EmuCore]\nInputProfileName = UndercoverLite-DrivingFirst\n");
+            var missingSelection = Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData);
+            Check(missingSelection.Status == Pcsx2GameInputInspector.Kind.SelectedProfile &&
+                  missingSelection.SelectedProfile == UndercoverKeyboardProfile.Name &&
+                  missingSelection.SelectedProfileFileExists == false &&
+                  missingSelection.CandidateCount == 1,
+                "finds exact Undercover serial+CRC INI, ignores other editions and legacy CRC-only files");
+            var selectedFile = Path.Combine(inputFolder, UndercoverKeyboardProfile.FileName);
+            File.WriteAllText(selectedFile, UndercoverKeyboardProfile.RenderIni());
+            var knownSelection = Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData);
+            Check(knownSelection.HasProvenSelection &&
+                  knownSelection.RecognizedProfileMatchesSource == true &&
+                  knownSelection.SelectedProfileFileExists == true &&
+                  knownSelection.Summary.Contains("DISK configuration read"),
+                "saved selected DrivingFirst profile matches C# mappings without claiming runtime keys");
+            File.WriteAllText(selectedFile, "# changed custom keys\n");
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData)
+                    .RecognizedProfileMatchesSource == false,
+                "installed but changed driving profile is reported as an input mismatch");
+            File.WriteAllText(correctGameIni, "[EmuCore]\nInputProfileName = \n");
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData).Status ==
+                  Pcsx2GameInputInspector.Kind.SharedBindings,
+                "empty per-game InputProfileName is classified as Shared controls");
+            File.WriteAllText(correctGameIni, "[EmuCore]\nLanguage = en\n");
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData).Status ==
+                  Pcsx2GameInputInspector.Kind.SharedBindings,
+                "missing per-game InputProfileName defaults to Shared controls");
+            File.WriteAllText(correctGameIni,
+                "[EmuCore]\nInputProfileName = UndercoverLite-Steer85-Menu\n");
+            var steerChoice = new SteeringProfiles.Choice(SteeringProfiles.Strength.Balanced, true);
+            File.WriteAllText(Path.Combine(inputFolder, steerChoice.FileName),
+                SteeringProfiles.RenderIni(steerChoice));
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData)
+                    .RecognizedProfileMatchesSource == true,
+                "saved steering and menu variant is recognized against actual generated INI source");
+            File.WriteAllText(correctGameIni,
+                "[EmuCore]\nInputProfileName = custom-controller\n");
+            File.WriteAllText(Path.Combine(inputFolder, "custom-controller.ini"), "[Pad1]\nCross = Keyboard/T\n");
+            var customSelection = Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData);
+            Check(customSelection.Status == Pcsx2GameInputInspector.Kind.SelectedProfile &&
+                  customSelection.RecognizedProfileMatchesSource is null,
+                "custom input bindings are never incorrectly declared compatible with keyboard icon pack");
+            File.WriteAllText(correctGameIni,
+                "[EmuCore]\nInputProfileName = ../../other-game\n");
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData).Status ==
+                  Pcsx2GameInputInspector.Kind.InvalidFile,
+                "malicious or unsafe profile names are rejected without path traversal");
+            File.WriteAllText(correctGameIni,
+                "[EmuCore]\nInputProfileName = UndercoverLite-DrivingFirst\n");
+            var otherCrc = Path.Combine(gameFolder, "SLUS-21801_11112222.ini");
+            File.WriteAllText(otherCrc, "[EmuCore]\nInputProfileName = Another-Crc-Profile\n");
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData).Status ==
+                  Pcsx2GameInputInspector.Kind.AmbiguousCrc,
+                "multiple game CRCs for same disc serial must not be guessed");
+            File.Delete(otherCrc);
+            File.WriteAllText(selectionIni,
+                "[Folders]\nGameSettings = ../outside-config\nInputProfiles = inputprofiles\n");
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData).Status ==
+                  Pcsx2GameInputInspector.Kind.UnsupportedFolder,
+                "custom game settings folder is surfaced without scanning unrelated files");
+            File.WriteAllText(selectionIni,
+                "[Folders]\nGameSettings = gamesettings\nInputProfiles = user-profiles\n");
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData).Status ==
+                  Pcsx2GameInputInspector.Kind.UnsupportedFolder,
+                "custom input profile directory is surfaced without pretending installed profile verification");
+            File.WriteAllText(selectionIni,
+                "[Folders]\nGameSettings = gamesettings\nInputProfiles = inputprofiles\n");
+            File.WriteAllText(correctGameIni,
+                "[EmuCore]\nInputProfileName = First\nInputProfileName = Second\n");
+            Check(Pcsx2GameInputInspector.Inspect(selectionSettings, selectionData).Status ==
+                  Pcsx2GameInputInspector.Kind.InvalidFile,
+                "duplicate saved profile keys are rejected");
+            File.WriteAllText(correctGameIni, "[EmuCore]\n");
+            File.WriteAllText(selectedFile, UndercoverKeyboardProfile.RenderIni());
+            var selectionDoctor = SetupDoctor.Check(selectionSettings, selectionData);
+            Check(selectionDoctor.Findings.Any(x => x.Topic == "Saved game input profile" &&
+                  x.Level == SetupDoctor.Severity.ActionNeeded),
+                "Setup Doctor warns when saved Undercover game uses Shared instead of keyboard profile");
+            Check(!selectionDoctor.CopyableReport().Contains(selectionData,
+                    StringComparison.OrdinalIgnoreCase) &&
+                  !selectionDoctor.CopyableReport().Contains(correctGameIni,
+                    StringComparison.OrdinalIgnoreCase),
+                "saved game profile inspection keeps absolute paths out of safe diagnostic reports");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
