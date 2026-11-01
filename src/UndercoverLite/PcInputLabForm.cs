@@ -112,10 +112,11 @@ public sealed class PcInputLabForm : Form
         _plan.Text = "Place the selection on A first. This previews only a POSSIBLE D-pad sequence. " +
                      "It will not type in the game; grid navigation and cursor behavior need testing.";
         main.Controls.Add(_plan, 0, 5);
-        var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3 };
-        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
-        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
-        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
+        var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4 };
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
         _message.Dock = DockStyle.Fill;
         _message.ForeColor = Color.FromArgb(255, 182, 64);
         _message.TextAlign = ContentAlignment.MiddleLeft;
@@ -126,6 +127,13 @@ public sealed class PcInputLabForm : Form
         var install = NewButton("Install driving profile");
         install.Click += (_, _) => InstallDrivingProfile();
         actions.Controls.Add(install, 2, 0);
+        var steer = NewButton("Steering presets...");
+        steer.Click += (_, _) =>
+        {
+            using var steeringLab = new SteeringLabForm(_store, _gameRunning);
+            steeringLab.ShowDialog(this);
+        };
+        actions.Controls.Add(steer, 3, 0);
         main.Controls.Add(actions, 0, 6);
     }
 
