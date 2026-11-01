@@ -20,7 +20,7 @@ public static class SetupDoctor
         {
             var lines = new List<string>
             {
-                "Undercover Lite PC | Setup Doctor 0.8",
+                "Undercover Lite PC | Setup Doctor 0.11",
                 "PCSX2 target: 2.8.2 Qt (actual binary version not inspected)",
                 "Disc: " + (VerifiedSerial ?? "unverified / not selected"),
                 $"Blocking findings: {Blockers}; attention items: {ActionItems - Blockers}",
@@ -176,6 +176,23 @@ public static class SetupDoctor
             Add(Severity.ActionNeeded, "Texture paths",
                 "Texture search directories could not be inspected.",
                 "Confirm the path and permissions in PCSX2 Graphics Settings.");
+        }
+
+        try
+        {
+            var alignment = InputAlignmentAudit.Inspect(
+                pcsx2DataDirectory, serial, settings.TextureSearchDirectory);
+            Add(alignment.ThemeKnownMatched == false ? Severity.ActionNeeded :
+                alignment.ThemeKnownMatched == true ? Severity.Ready : Severity.Notice,
+                "Input/icon alignment", alignment.Message, alignment.NextStep);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or
+                                   InvalidDataException or ArgumentException or
+                                   System.Text.Json.JsonException)
+        {
+            Add(Severity.ActionNeeded, "Input/icon alignment",
+                "The keyboard profile or registered glyph theme could not be inspected safely.",
+                "Verify the profile and theme in PCSX2 and Undercover Lite before changing any files.");
         }
 
         Add(Severity.Notice, "Runtime verification",
