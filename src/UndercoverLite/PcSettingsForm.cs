@@ -29,6 +29,10 @@ public sealed class PcSettingsForm : Form
     private readonly Button _scaleApply = new();
     private readonly Label _scaleState = new();
     private Pcsx2GraphicsAdapter.Snapshot? _scaleSnapshot;
+    private readonly ComboBox _gameScale = new();
+    private readonly Button _gameScaleApply = new();
+    private readonly Label _gameScaleState = new();
+    private Pcsx2GameGraphicsEditor.Snapshot? _gameScaleSnapshot;
     private readonly CheckBox _fastBoot = new();
     private readonly CheckBox _hideEmulator = new();
     private readonly CheckBox _isolated = new();
@@ -50,7 +54,7 @@ public sealed class PcSettingsForm : Form
         _baseline = originalSaved;
         _initial = displayedFromLauncher;
         _gameRunning = gameRunning;
-        Text = "Undercover Lite PC | PC Settings (UI-4 exact CRC)";
+        Text = "Undercover Lite PC | PC Settings (0.17 game graphics)";
         BackColor = Background;
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
@@ -65,6 +69,7 @@ public sealed class PcSettingsForm : Form
         RefreshGraphicsScale();
         RefreshGameInputSelection();
         RefreshGameGraphicsStatus();
+        RefreshEditableGameScale();
     }
 
     private void BuildUi()
@@ -290,6 +295,14 @@ public sealed class PcSettingsForm : Form
         _scaleState.AutoEllipsis = true;
         Row(render, "Graphics configuration", "The game must be stopped. Backups are kept alongside PCSX2.ini.",
             _scaleState, "Read-only state · Never writes game-specific overrides");
+        _gameScaleState.ForeColor = Muted;
+        _gameScaleState.AutoEllipsis = true;
+        Row(render, "Undercover-only resolution",
+            "Change the existing, exactly CRC-matched game setting (not the global PCSX2 scale).",
+            GameScaleSelector(), "Existing SERIAL_CRC.ini only · Backup · Next boot");
+        Row(render, "Game resolution editor",
+            "Requires verified ISO, isolated settings and stopped PCSX2.",
+            _gameScaleState, "Never creates a game settings file");
         Row(render, "Undercover graphics override",
             "Read the game's saved serial+CRC graphics override, without modifying any file.",
             Action("Inspect game graphics...", ShowGameGraphicsAudit),
@@ -333,6 +346,106 @@ public sealed class PcSettingsForm : Form
         panel.Controls.Add(_scaleApply, 1, 0);
         _scaleApply.Enabled = false;
         return panel;
+    }
+
+    private Control GameScaleSelector()
+    {
+        var panel = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, Dock = DockStyle.Fill };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 59));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 41));
+        _gameScale.DropDownStyle = ComboBoxStyle.DropDownList;
+        _gameScale.BackColor = Field;
+        _gameScale.ForeColor = Color.White;
+        _gameScale.Dock = DockStyle.Fill;
+        _gameScale.Margin = new Padding(1, 8, 3, 8);
+        _gameScale.Items.AddRange(new object[] { "Native (1×)", "2×", "3×", "4×", "6×" });
+        _gameScale.SelectedIndexChanged += (_, _) => UpdateGameScaleButton();
+        panel.Controls.Add(_gameScale, 0, 0);
+        _gameScaleApply.Text = "Apply for game...";
+        StyleButton(_gameScaleApply);
+        _gameScaleApply.Margin = new Padding(2, 4, 1, 4);
+        _gameScaleApply.Click += (_, _) => SaveGameGraphicsScale();
+        panel.Controls.Add(_gameScaleApply, 1, 0);
+        _gameScaleApply.Enabled = false;
+        return panel;
+    }
+
+    private int SelectedGameScale() => _gameScale.SelectedIndex switch
+    {
+        0 => 1, 1 => 2, 2 => 3, 3 => 4, 4 => 6, _ => 0
+    };
+
+    private void RefreshEditableGameScale()
+    {
+        try
+        {
+            var settings = Edited();
+            if (!settings.IsolatePcsx2Data || !_isolated.Checked)
+                throw new InvalidOperationException("Save/enable isolated PCSX2 data first.");
+            _gameScaleSnapshot = Pcsx2GameGraphicsEditor.Inspect(settings, _store.Pcsx2DataDirectory);
+            var current = _gameScaleSnapshot.GameScale;
+            _gameScale.SelectedIndex = current.HasValue ?
+                Array.IndexOf(Pcsx2GraphicsAdapter.AllowedMultipliers, (int)current.Value) : -1;
+            if (_gameScale.SelectedIndex >= 0 && current != SelectedGameScale()) _gameScale.SelectedIndex = -1;
+            _gameScale.Enabled = !_gameRunning;
+            _gameScaleState.Text = current.HasValue
+                ? $"Saved game {current:0.##}×; global {_gameScaleSnapshot.GlobalScale:0.##}×"
+                : $"No game scale override; global {_gameScaleSnapshot.GlobalScale:0.##}×";
+            if (_gameRunning) _gameScaleState.Text += " · Exit game before editing";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   InvalidDataException or InvalidOperationException or ArgumentException)
+        {
+            _gameScaleSnapshot = null;
+            _gameScale.SelectedIndex = -1;
+            _gameScale.Enabled = false;
+            _gameScaleState.Text = ex is FileNotFoundException
+                ? "Initialize game graphics in PCSX2 Game Properties first."
+                : "Game editing unavailable: " + ex.Message;
+        }
+        UpdateGameScaleButton();
+    }
+
+    private void UpdateGameScaleButton()
+    {
+        _gameScaleApply.Enabled = !_gameRunning && _isolated.Checked &&
+            _gameScaleSnapshot is not null && SelectedGameScale() != 0 &&
+            _gameScaleSnapshot.GameScale != SelectedGameScale();
+    }
+
+    private void SaveGameGraphicsScale()
+    {
+        if (_gameRunning || _gameScaleSnapshot is null) return;
+        try
+        {
+            var settings = Edited();
+            if (!settings.IsolatePcsx2Data || !_isolated.Checked)
+                throw new InvalidOperationException("Enable isolated PCSX2 data first.");
+            var multiplier = SelectedGameScale();
+            if (multiplier == 0) return;
+            if (MessageBox.Show(this,
+                $"Set Undercover-specific internal resolution to {multiplier}×?\n\n" +
+                "Close ALL PCSX2 windows before continuing. This edits only the verified " +
+                "SERIAL_CRC.ini and keeps an original backup. It does not change the global " +
+                "PCSX2 scale or the ISO.\n\nProceed?",
+                "Apply Undercover game graphics", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            var backup = Pcsx2GameGraphicsEditor.Apply(settings,
+                _store.Pcsx2DataDirectory, _gameScaleSnapshot, multiplier);
+            RefreshEditableGameScale();
+            RefreshGameGraphicsStatus();
+            RefreshEditableGameScale();
+            _status.Text = string.IsNullOrEmpty(backup)
+                ? "Game graphics scale was already set."
+                : $"Undercover {multiplier}× saved with backup. Restart PCSX2.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message + "\n\nNo automatic retry was attempted.",
+                "Could not apply Undercover graphics change", MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            RefreshEditableGameScale();
+        }
     }
 
     private int SelectedScale() => _internalScale.SelectedIndex switch
@@ -487,7 +600,7 @@ public sealed class PcSettingsForm : Form
         Connect(_fastBoot);
         Connect(_hideEmulator);
         Connect(_isolated);
-        _isolated.CheckedChanged += (_, _) => UpdateScaleButton();
+        _isolated.CheckedChanged += (_, _) => { UpdateScaleButton(); if (!_loading) RefreshEditableGameScale(); };
         Connect(_companionHotkey);
         Row(startup, "Fast boot", "Skip the PS2 startup animation.", _fastBoot,
             "Available now · Next launch");
@@ -510,6 +623,7 @@ public sealed class PcSettingsForm : Form
             {
                 RefreshGameInputSelection();
                 RefreshGameGraphicsStatus();
+                RefreshEditableGameScale();
             }
         };
         _texturePath.TextChanged += (_, _) => RefreshDirty();
@@ -630,6 +744,7 @@ public sealed class PcSettingsForm : Form
             RefreshGraphicsScale();
             RefreshGameInputSelection();
             RefreshGameGraphicsStatus();
+            RefreshEditableGameScale();
             _status.Text = "Launcher settings saved. Changes take effect on the next launch.";
             return true;
         }
