@@ -64,7 +64,7 @@ public static class Pcsx2GraphicsAdapter
         var lines = text.Split('\n');
         for (int i = 0; i < lines.Length; i++)
         {
-            var line = lines[i].Trim();
+            var line = lines[i].Trim().TrimStart('\uFEFF');
             if (line.Length == 0 || line.StartsWith('#') || line.StartsWith(';')) continue;
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
