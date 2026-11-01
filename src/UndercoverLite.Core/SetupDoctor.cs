@@ -126,7 +126,7 @@ public static class SetupDoctor
             {
                 var stale = Path.Combine(Path.GetFullPath(pcsx2DataDirectory), "textures");
                 var active = Path.GetFullPath(root);
-                if (!Path.Equals(stale, active) && Directory.Exists(stale) &&
+                if (!string.Equals(stale, active, StringComparison.OrdinalIgnoreCase) && Directory.Exists(stale) &&
                     Directory.EnumerateFileSystemEntries(stale).Any())
                     Add(Severity.ActionNeeded, "Legacy texture directory",
                         "Files exist in the old direct-textures location, separate from the selected directory.",
