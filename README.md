@@ -180,3 +180,8 @@ A new original 0.11 sprite generator reads the **same C# controller mapping sour
 
 
 The updated **Setup Doctor** also flags the known 0.7 false labels and reports whether `UndercoverLite-DrivingFirst.ini` agrees with a registered 0.11 theme. **It does not inspect the active PCSX2 profile selection**, so you must still select the correct profile manually.
+
+
+## Proposed unified PC Settings screen
+
+A complete [six-tab PC Settings UI blueprint](docs/PC_SETTINGS_UI_BLUEPRINT.md) defines the exact Graphics, Controls, Audio, Interface, Advanced and Troubleshooting options, control types, helper text, backend readiness, safety rules and staged implementation plan. This is **a design specification only**, not a built in-game menu or newly enabled graphics/audio controls. The design separates existing Undercover Lite workflows from PCSX2 integration work and game-specific reverse engineering.
