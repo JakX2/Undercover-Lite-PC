@@ -199,3 +199,10 @@ Changes are merged into the most recently saved configuration **only for fields 
 The six-tab PC Settings window now supports a **real internal-resolution selector** (Native 1×, 2×, 3×, 4×, 6×). It edits only the existing **isolated** PCSX2 2.8.2 setting **[EmuCore/GS] upscale_multiplier**, with an original-file backup, input validation and concurrent-edit checks. The Graphics tab has its own **Apply scale...** confirmation, separate from saving launcher preferences.
 
 **Important:** this edits the isolated emulator's **global** scale setting. A game-specific Undercover PCSX2 configuration based on the disc ELF CRC can override it. No game-specific overrides, original PS2 assets, BIOS, saves or other graphic settings are modified. Read [UI-2 graphics scale guide](docs/GRAPHICS_SCALE_UI_2.md).
+
+
+## Prototype 0.14: Detect the saved Undercover game input profile (UI-3)
+
+The **PC Settings → Controls** tab can now inspect the **saved** PCSX2 game-specific input selection. It uses PCSX2 2.8.2's actual **SERIAL_ELFCRC.ini** game-settings convention and **[EmuCore] InputProfileName** key, only when a single INI matches the verified Undercover ISO serial. It checks whether the selected profile file exists and whether its bindings match the original Undercover Lite DrivingFirst or steering preset source. **Setup Doctor** warns about a saved Shared/custom profile while a keyboard glyph theme is registered.
+
+This read-only inspector **does not see live emulator input**, and refuses to guess among multiple CRCs, unknown compressed disc serials or custom folder locations. See the [0.14 saved game input selection guide](docs/GAME_INPUT_SELECTION_UI_3.md).

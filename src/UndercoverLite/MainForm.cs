@@ -43,7 +43,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Undercover Lite PC | Prototype 0.13 · PC Settings UI-2";
+        Text = "Undercover Lite PC | Prototype 0.14 · PC Settings UI-3";
         MinimumSize = new Size(800, 730);
         Size = new Size(980, 765);
         StartPosition = FormStartPosition.CenterScreen;
@@ -80,7 +80,7 @@ public sealed class MainForm : Form
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         header.Controls.Add(NewLabel("UNDERCOVER LITE PC", 22, AccentColor, bold: true), 0, 0);
         header.Controls.Add(NewLabel("An emulation-backed PC launcher for Need for Speed Undercover (PS2)", 10, Color.White), 0, 1);
-        header.Controls.Add(NewLabel("Prototype 0.13  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
+        header.Controls.Add(NewLabel("Prototype 0.14  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
         layout.Controls.Add(header, 0, 0);
 
         var paths = NewCard();
