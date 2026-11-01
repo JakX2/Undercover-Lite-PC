@@ -161,3 +161,11 @@ The launcher now creates a standalone, game-specific PCSX2 Qt **UndercoverLite-D
 
 The install is **opt-in, isolated to the Undercover Lite PCSX2 data folder and never overwrites differing existing profiles**. You must still assign it to the game under **PCSX2 > Undercover Properties > Summary > Input Profile**; Undercover Lite does not edit shared controls or force the game to use a profile. Key behavior is the same in menus and driving, so W = Accept and Space = Back are unavoidable with this static PS2 button mapping. The result has passed source-level tests only until we receive an actual in-game control test. See [0.9 input-profile guide](docs/KEYBOARD_PROFILE_0_9.md).
 
+
+
+## Prototype 0.10: Steering and menu key controls
+
+The **PC Input Lab** now has a **Steering presets...** screen with three distinct PCSX2 input profiles: Gentle (65%), Balanced (85%), and Full (100%) keyboard steering magnitude. An optional menu-friendly variant adds Enter as another Cross/Accept binding and Backspace as another Triangle/Back binding, without removing W/Space. These are still shared PS2 inputs, so the added keys also have in-game driving effects.
+
+**Important discovery from the official PCSX2 2.8.2 source:** the default emulator **Space hotkey toggles pause**, potentially conflicting with our Space handbrake. The Steering Lab includes a read-only hotkey check and guides you to change that emulator hotkey manually if necessary. The tool never silently edits shared PCSX2 hotkeys or applies profiles to a game. Use Undercover Game Properties > Summary > Input Profile to select one. See [Steering and Menu 0.10 guide](docs/STEERING_AND_MENU_0_10.md).
+
