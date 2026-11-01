@@ -50,7 +50,7 @@ public sealed class PcSettingsForm : Form
         _baseline = originalSaved;
         _initial = displayedFromLauncher;
         _gameRunning = gameRunning;
-        Text = "Undercover Lite PC | PC Settings (UI-3 + graphics audit)";
+        Text = "Undercover Lite PC | PC Settings (UI-4 exact CRC)";
         BackColor = Background;
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
@@ -548,6 +548,9 @@ public sealed class PcSettingsForm : Form
             Action("Copy report...", CopyReport), "Available now · Read-only");
         Row(diagnosis, "Verify game image", "Inspect bounded ISO metadata for Undercover PS2 boot serial.",
             Action("Check image...", CheckGameImage), "Available now · Read-only");
+        Row(diagnosis, "PS2 executable CRC", "Read the BOOT2 ELF inside your ISO and calculate PCSX2's exact XOR CRC.",
+            Action("Identify ELF CRC...", InspectExecutableCrc),
+            "Read-only · No extraction or game modification");
         Row(diagnosis, "Inspect input/hotkey conflicts", "Look for Space-to-pause and other potential key collisions.",
             Action("Check hotkeys...", InspectHotkeys), "Available now · Read-only");
         var tools = Group(list, "Repair tools");
@@ -859,6 +862,25 @@ public sealed class PcSettingsForm : Form
                 "PCSX2 hotkeys (read-only)", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex) { Error("Hotkey audit", ex); }
+    }
+
+    private void InspectExecutableCrc()
+    {
+        try
+        {
+            var result = Ps2ElfCrcInspector.Inspect(Edited().GameImage);
+            MessageBox.Show(this,
+                result.Message + "\n\n" +
+                (result.State == Ps2ElfCrcInspector.Status.Verified
+                    ? "The verified CRC identifies which serial-and-CRC PCSX2 game settings file belongs " +
+                      "to the disc's boot executable. It does not prove PCSX2 has loaded those settings."
+                    : "Only supported, uncompressed ISO9660 Undercover discs can be inspected. " +
+                      "Unknown or incomplete images are not guessed."),
+                "Undercover PS2 ELF CRC (read-only)", MessageBoxButtons.OK,
+                result.State == Ps2ElfCrcInspector.Status.Verified
+                    ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+        }
+        catch (Exception ex) { Error("PS2 executable CRC", ex); }
     }
 
     private void CheckGameImage()
