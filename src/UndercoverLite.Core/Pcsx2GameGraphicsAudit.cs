@@ -135,37 +135,56 @@ public static class Pcsx2GameGraphicsAudit
                     "A separate per-game override cannot be ruled out; check PCSX2 Game Properties.");
             Guard(folder);
 
-            // No ELF CRC is computed from the ISO in this tool. A unique
-            // serial-specific file is *evidence*, not proof of a loaded CRC.
-            var candidates = Directory.EnumerateFiles(folder, serial + "_*.ini",
-                    SearchOption.TopDirectoryOnly)
-                .Where(f => Path.GetFileName(f).StartsWith(serial + "_", StringComparison.OrdinalIgnoreCase) &&
-                            CrcName.IsMatch(Path.GetFileName(f)[(serial.Length + 1)..]))
-                .Take(2).ToArray();
-            if (candidates.Length == 0)
-                return Result(State.NoMatchingGameIni, serial, global, null,
-                    $"Saved global internal resolution: {global:0.##}×. " +
-                    "No matching serial-and-CRC game config was found.",
-                    "PCSX2 may also use a legacy CRC-only config. Verify the game's actual graphics settings.");
-            if (candidates.Length > 1)
-                return Result(State.MultipleCrcs, serial, global, null,
-                    "Multiple per-game configurations match this disc serial but use different ELF CRCs.",
-                    "Open the matching Undercover game entry in PCSX2. No configuration was guessed.",
-                    candidates.Length);
+            // Select the exact PCSX2 VMManager serial+CRC file when the
+            // BOOT2 ELF can be read, including its legacy CRC-only fallback.
+            // Otherwise retain the conservative older unique-candidate view.
+            var elf = Ps2ElfCrcInspector.Inspect(settings.GameImage);
+            bool exactCrc = elf.State == Ps2ElfCrcInspector.Status.Verified && elf.Hex is not null;
+            string[] candidates;
+            if (exactCrc)
+            {
+                string named = Path.Combine(folder, $"{serial}_{elf.Hex}.ini");
+                string legacy = Path.Combine(folder, elf.Hex + ".ini");
+                candidates = File.Exists(named) ? [named] : File.Exists(legacy) ? [legacy] : [];
+                if (candidates.Length == 0)
+                    return Result(State.NoMatchingGameIni, serial, global, null,
+                        $"Global rendering scale: {global:0.##}×. The ISO ELF CRC {elf.Hex} was verified, " +
+                        "but no matching game-specific INI was found.",
+                        "Review Undercover Game Properties. This tool will not use a different CRC configuration.");
+            }
+            else
+            {
+                candidates = Directory.EnumerateFiles(folder, serial + "_*.ini",
+                        SearchOption.TopDirectoryOnly)
+                    .Where(f => Path.GetFileName(f).StartsWith(serial + "_", StringComparison.OrdinalIgnoreCase) &&
+                                CrcName.IsMatch(Path.GetFileName(f)[(serial.Length + 1)..]))
+                    .Take(2).ToArray();
+                if (candidates.Length == 0)
+                    return Result(State.NoMatchingGameIni, serial, global, null,
+                        $"Saved global internal resolution: {global:0.##}×. " +
+                        "No matching serial-and-CRC game config was found; the ELF CRC could not be verified.",
+                        "PCSX2 may also use a legacy CRC-only config. Verify the game's actual graphics settings.");
+                if (candidates.Length > 1)
+                    return Result(State.MultipleCrcs, serial, global, null,
+                        "Multiple game configurations share this serial, but the BOOT2 ELF CRC is unverified.",
+                        "Open the matching Undercover game entry in PCSX2. No configuration was guessed.",
+                        candidates.Length);
+            }
 
             var gameIni = ReadSafeIni(candidates[0]);
             var overrideScale = ScaleValue(gameIni);
             if (overrideScale is null)
                 return Result(State.UniqueGameIni, serial, global, null,
                     $"Saved global internal resolution: {global:0.##}×. " +
-                    "The unique serial-specific game INI has no upscale_multiplier override.",
+                    (exactCrc ? "The ELF-CRC-matched game INI" : "The unique serial-candidate game INI") +
+                    " has no upscale_multiplier override.",
                     "PCSX2 may still load a legacy CRC-only file or different running settings; check in-game rendering.",
                     1);
 
             var changesValue = overrideScale.Value != global;
             return Result(State.OverridePresent, serial, global, overrideScale,
                 $"Saved global internal resolution: {global:0.##}×. " +
-                $"Serial-specific game INI resolution: {overrideScale:0.##}×. " +
+                $"{(exactCrc ? "ELF-CRC-matched" : "Serial-candidate")} game INI resolution: {overrideScale:0.##}×. " +
                 (changesValue
                     ? "These saved values differ, so the game-specific override may supersede the global setting."
                     : "The saved values agree; an override still exists.") +
