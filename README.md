@@ -177,3 +177,6 @@ The **PC Input Lab** now has a **Steering presets...** screen with three distinc
 
 A new original 0.11 sprite generator reads the **same C# controller mapping source as the PCSX2 input profile**, producing all ten captured 32px PS2 icons and a corrected 256px diagram. The GitHub Actions downloadable ZIP includes 11 original replacement PNGs per region, with automated drift detection. It does **not** automatically activate any profile or make PS2 buttons context-aware, and still needs gameplay testing. See [0.11 artwork/input alignment](docs/INPUT_ALIGNED_GLYPHS_0_11.md).
 
+
+
+The updated **Setup Doctor** also flags the known 0.7 false labels and reports whether `UndercoverLite-DrivingFirst.ini` agrees with a registered 0.11 theme. **It does not inspect the active PCSX2 profile selection**, so you must still select the correct profile manually.
