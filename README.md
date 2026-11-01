@@ -136,3 +136,12 @@ Original experimental 32×32 PC keycap replacement art and two candidate profile
 After the developer confirmed **Accept [W]** appeared inside Undercover on PCSX2 2.8.2, the next milestone adds **Activate / Switch** and **Disable managed glyphs** to the launcher. Undercover Lite now keeps SHA-256 ownership records for textures it installs, allows switching between the experimental menu-reference and driving-first packs, and blocks changes to unrelated or externally modified texture files. Existing icons installed by older Undercover Lite versions can be adopted **only when byte-identical and after explicit confirmation**. The game must be closed during changes; this is not real-time context switching.
 
 Read the [managed theme switching guide](docs/THEME_SWITCHING.md) before trying it with an existing theme. Gamepad bindings, menu-vs-driving prompt contexts, and the large controller diagram are still separate development tasks.
+
+
+## Prototype 0.7: PC keyboard diagram for the Controls screen (experimental)
+
+The developer's full 97-image PCSX2 dump contains a separate **256×256 controller image** with original hash filename `b99d9ef8125d8894-f3379f9602408f67-00002213.png`. This is not replaced by earlier 32×32 keyboard icons. An **original transparent keyboard schematic** has now been generated under the exact hash to test replacement in **Options → Controls**. It illustrates WASD driving actions, Q/E gear shifts, Shift nitrous, and other proposed keys. This does **not** set controller bindings or change game-engine text.
+
+The 0.7 user-facing proof pack combines the existing ten driving-first keyboard sprites with the new controller atlas (11 PNGs per game serial). The repo includes a reproducible game-data-free Python/Pillow generator, CI validations and an atlas-only Actions artifact. For complete packs, run the generator with your previously generated 0.5b keyboard-keycap proof ZIP using `--source-poc`. Source game texture images are never committed.
+
+**Only the individual Cross → W glyph has so far been confirmed working in-game; the large controller atlas still needs validation.** Consult [the 0.7 controller-diagram guide](docs/CONTROLLER_DIAGRAM_0_7.md), and keep a backup of your existing textures before trying new themes.
