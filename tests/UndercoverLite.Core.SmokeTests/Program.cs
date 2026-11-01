@@ -479,6 +479,84 @@ internal static class Program
             Check(UndercoverKeyboardProfile.GetProfileDirectory(legacyProfileData) ==
                   Path.Combine(legacyProfileData, "PCSX2", "inputprofiles"),
                 "nested PCSX2 profile directory wins when PCSX2 subdirectory exists");
+            // 0.10: official 2.8.2 per-binding half-axis scale + repeated INI bindings.
+            var steeringData = Path.Combine(temp, "pcsx2-steering-test");
+            var gentle = new SteeringProfiles.Choice(SteeringProfiles.Strength.Gentle, false);
+            var balancedMenu = new SteeringProfiles.Choice(SteeringProfiles.Strength.Balanced, true);
+            var full = new SteeringProfiles.Choice(SteeringProfiles.Strength.Full, false);
+            Check(SteeringProfiles.Percent(gentle.Steering) == 65 &&
+                  SteeringProfiles.Percent(balancedMenu.Steering) == 85 &&
+                  SteeringProfiles.Percent(full.Steering) == 100,
+                "steering strength variants represent real 65/85/100 percent half-axis scales");
+            Check(gentle.FileName != full.FileName &&
+                  gentle.FileName != balancedMenu.FileName,
+                "steering strength presets use non-colliding profile file names");
+            var iniGentle = SteeringProfiles.RenderIni(gentle);
+            Check(iniGentle.Contains("AxisScale = 1.000000\nLLeftScale = 0.65\nLRightScale = 0.65") &&
+                  iniGentle.Contains("Cross = Keyboard/W") &&
+                  !iniGentle.Contains("Cross = Keyboard/Return"),
+                "gentle preset scales only PS2 left-stick steering and keeps base menu bindings");
+            var iniMenu = SteeringProfiles.RenderIni(balancedMenu);
+            Check(iniMenu.Contains("LLeftScale = 0.85\nLRightScale = 0.85") &&
+                  iniMenu.Contains("Cross = Keyboard/W\nCross = Keyboard/Return") &&
+                  iniMenu.Contains("Triangle = Keyboard/Space\nTriangle = Keyboard/Backspace"),
+                "menu-friendly variant adds legitimate second PC input to Cross and Triangle");
+            Check(iniMenu.Split('\n').Count(line => line.StartsWith("Cross = ")) == 2 &&
+                  iniMenu.Split('\n').Count(line => line.StartsWith("Triangle = ")) == 2,
+                "INI generated as repeated keys (not accidental chord requiring simultaneous presses)");
+            Check(SteeringProfiles.RenderIni(full).Contains("LLeftScale = 1.00\nLRightScale = 1.00"),
+                "full-strength variant restores unscaled keyboard steering");
+            var freshSteering = SteeringProfiles.Inspect(steeringData, balancedMenu);
+            Check(freshSteering.Status == UndercoverKeyboardProfile.InstallStatus.New &&
+                  freshSteering.Destination.EndsWith(balancedMenu.FileName),
+                "steering preset preview selects a unique input profile");
+            Check(!Directory.Exists(steeringData), "steering preview does not create files");
+            var installedSteer = SteeringProfiles.Install(
+                new LauncherSettings { IsolatePcsx2Data = true }, steeringData, balancedMenu);
+            Check(installedSteer.Status == UndercoverKeyboardProfile.InstallStatus.AlreadyInstalled &&
+                  File.ReadAllText(installedSteer.Destination) == iniMenu,
+                "selected steering profile installs without altering shared controls");
+            var otherSteer = SteeringProfiles.Install(
+                new LauncherSettings { IsolatePcsx2Data = true }, steeringData, gentle);
+            Check(File.Exists(otherSteer.Destination) &&
+                  File.ReadAllText(installedSteer.Destination) == iniMenu,
+                "installing a different strength creates separate profile without changing first");
+            File.WriteAllText(installedSteer.Destination, "# custom user controller layout\n");
+            Check(SteeringProfiles.Inspect(steeringData, balancedMenu).Status ==
+                  UndercoverKeyboardProfile.InstallStatus.Conflict,
+                "different existing profile is treated as user-owned conflict");
+            ExpectThrows<IOException>(() =>
+                SteeringProfiles.Install(new LauncherSettings { IsolatePcsx2Data = true }, steeringData, balancedMenu),
+                "steering installer refuses to overwrite conflicting input profile");
+            Check(File.ReadAllText(installedSteer.Destination) == "# custom user controller layout\n",
+                "conflicting user profile remains unchanged");
+            var nonIsolatedSteer = Path.Combine(temp, "steer-external-data");
+            ExpectThrows<InvalidOperationException>(() =>
+                SteeringProfiles.Install(new LauncherSettings { IsolatePcsx2Data = false }, nonIsolatedSteer, gentle),
+                "steering presets never silently change nonisolated PCSX2 data");
+            Check(!Directory.Exists(nonIsolatedSteer),
+                "external profile directory is untouched after refusal");
+
+            // Current PCSX2 2.8.2 source maps Space to TogglePause by default.
+            var emptyAuditData = Path.Combine(temp, "no-pcsx2-settings-yet");
+            var defaultAudit = Pcsx2HotkeyAudit.Scan(emptyAuditData);
+            Check(defaultAudit.Findings.Any(f => f.Description.Contains("Space")) &&
+                  defaultAudit.Findings.Any(f => f.Description.Contains("Escape")) &&
+                  !Directory.Exists(emptyAuditData),
+                "hotkey auditor warns about default Space/Escape conflicts without creating config");
+            var iniSettings = Path.Combine(steeringData, "PCSX2", "inis", "PCSX2.ini");
+            Directory.CreateDirectory(Path.GetDirectoryName(iniSettings)!);
+            File.WriteAllText(iniSettings,
+                "[Hotkeys]\nTogglePause = Keyboard/Space\nOpenPauseMenu = Keyboard/Escape\n");
+            var conflicts = Pcsx2HotkeyAudit.Scan(steeringData);
+            Check(conflicts.Findings.Any(f => f.Description.Contains("Conflict confirmed")) &&
+                  conflicts.Findings.Any(f => f.Description.Contains("Escape opens")),
+                "local PCSX2 hotkey audit detects a direct Space handbrake/emulator conflict");
+            File.WriteAllText(iniSettings,
+                "[Hotkeys]\nTogglePause = Keyboard/F12\nOpenPauseMenu = Keyboard/F11\n");
+            var corrected = Pcsx2HotkeyAudit.Scan(steeringData);
+            Check(corrected.Findings.All(f => !f.Description.Contains("Conflict confirmed")),
+                "auditor recognizes customized emulator hotkeys without modifying them");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
