@@ -360,8 +360,12 @@ internal static class Program
             var foundReport = SetupDoctor.Check(healthy, doctorData);
             Check(foundReport.Blockers == 0 && foundReport.VerifiedSerial == "SLUS-21801",
                 "Setup Doctor recognizes valid ISO without launching emulator");
-            Check(foundReport.Findings.Any(f => f.Topic == "PCSX2 executable" &&
-                      f.Level == SetupDoctor.Severity.ActionNeeded),
+            var unexpectedExecutable = Path.Combine(temp, "something-else.exe");
+            File.WriteAllBytes(unexpectedExecutable, Array.Empty<byte>());
+            healthy.Pcsx2Executable = unexpectedExecutable;
+            Check(SetupDoctor.Check(healthy, doctorData).Findings.Any(f =>
+                f.Topic == "PCSX2 executable" &&
+                f.Level == SetupDoctor.Severity.ActionNeeded),
                 "nonstandard executable name gives an actionable warning");
             var reportText = foundReport.CopyableReport();
             Check(reportText.Contains("SLUS-21801") && !reportText.Contains(temp, StringComparison.OrdinalIgnoreCase) &&
