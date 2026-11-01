@@ -24,6 +24,7 @@ public sealed class PcSettingsForm : Form
     private readonly LauncherSettings _initial;
     private readonly ComboBox _displayMode = new();
     private readonly ComboBox _internalScale = new();
+    private readonly Label _gameInputState = new();
     private readonly Button _scaleApply = new();
     private readonly Label _scaleState = new();
     private Pcsx2GraphicsAdapter.Snapshot? _scaleSnapshot;
@@ -48,7 +49,7 @@ public sealed class PcSettingsForm : Form
         _baseline = originalSaved;
         _initial = displayedFromLauncher;
         _gameRunning = gameRunning;
-        Text = "Undercover Lite PC | PC Settings (UI-2)";
+        Text = "Undercover Lite PC | PC Settings (UI-3)";
         BackColor = Background;
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
@@ -61,6 +62,7 @@ public sealed class PcSettingsForm : Form
         _loading = false;
         RefreshDirty();
         RefreshGraphicsScale();
+        RefreshGameInputSelection();
     }
 
     private void BuildUi()
@@ -410,8 +412,16 @@ public sealed class PcSettingsForm : Form
             Action("PC Input Lab...", OpenInputLab), "Available now · PCSX2 activation is manual");
         Row(input, "Steering strength", "Gentle 65%, Balanced 85%, Full 100%. No gradual smoothing.",
             Action("Steering presets...", OpenSteeringLab), "Available now · Select profile in PCSX2");
-        Row(input, "Active game input profile", "An installed INI file does not prove PCSX2 selected it.",
-            Unavailable("Cannot verify active profile"), "Read-only · Manual PCSX2 selection required");
+        Row(input, "Saved game input selection",
+            "Reads the matching serial+CRC Undercover Game Properties. Not live controller state.",
+            Action("Inspect game profile...", ShowSavedGameInput),
+            "Read-only · Detects saved per-game choice, not runtime input");
+        _gameInputState.ForeColor = Muted;
+        _gameInputState.TextAlign = ContentAlignment.MiddleLeft;
+        _gameInputState.AutoEllipsis = true;
+        Row(input, "Saved selection status",
+            "Warns about missing CRC matches, Shared profiles and missing profile files.",
+            _gameInputState, "Auto-read · Close PCSX2 before making changes");
         Row(input, "Hotkey conflict check", "Space may pause PCSX2 instead of acting solely as handbrake.",
             Action("Inspect hotkeys...", InspectHotkeys), "Available now · Read-only");
         Row(input, "Individual key rebinding", "A native PC binding editor requires further input integration.",
@@ -480,7 +490,7 @@ public sealed class PcSettingsForm : Form
         PrepareText(_texturePath);
         _texturePath.ReadOnly = true;
         _pcsx2Path.TextChanged += (_, _) => RefreshDirty();
-        _gameImagePath.TextChanged += (_, _) => RefreshDirty();
+        _gameImagePath.TextChanged += (_, _) => { RefreshDirty(); if (!_loading) RefreshGameInputSelection(); };
         _texturePath.TextChanged += (_, _) => RefreshDirty();
         Row(files, "PCSX2 Qt executable", "Local emulator program path. Nothing is bundled.",
             Picker(_pcsx2Path, SelectPcsx2), "Saved only to launcher preferences");
@@ -594,6 +604,7 @@ public sealed class PcSettingsForm : Form
             SavedChanges = true;
             RefreshDirty();
             RefreshGraphicsScale();
+            RefreshGameInputSelection();
             _status.Text = "Launcher settings saved. Changes take effect on the next launch.";
             return true;
         }
@@ -711,6 +722,51 @@ public sealed class PcSettingsForm : Form
             steering.ShowDialog(this);
         }
         catch (Exception ex) { Error("Steering presets", ex); }
+    }
+
+    private Pcsx2GameInputInspector.Result SavedSelection() =>
+        Pcsx2GameInputInspector.Inspect(Edited(), _store.Pcsx2DataDirectory);
+
+    private void RefreshGameInputSelection()
+    {
+        try
+        {
+            var result = SavedSelection();
+            _gameInputState.Text = result.Status switch
+            {
+                Pcsx2GameInputInspector.Kind.SelectedProfile =>
+                    result.SelectedProfile + (result.RecognizedProfileMatchesSource == true ? " (verified file)" :
+                    result.SelectedProfileFileExists == false ? " (missing file)" : " (custom/modified)"),
+                Pcsx2GameInputInspector.Kind.SharedBindings => "Shared controller bindings",
+                Pcsx2GameInputInspector.Kind.AmbiguousCrc => "Multiple game CRC profiles",
+                Pcsx2GameInputInspector.Kind.UnverifiedDisc => "Disc serial unverified",
+                _ => "Not verified: " + result.Status
+            };
+        }
+        catch (Exception)
+        {
+            _gameInputState.Text = "Could not read saved PCSX2 input selection.";
+        }
+    }
+
+    private void ShowSavedGameInput()
+    {
+        try
+        {
+            var info = SavedSelection();
+            RefreshGameInputSelection();
+            MessageBox.Show(this,
+                "READ-ONLY PCSX2 SAVED GAME INPUT INSPECTION\n\n" +
+                info.Summary + "\n\n" + info.NextStep + "\n\n" +
+                "This reads a unique per-game INI only if its serial matches your verified ISO. " +
+                "It does NOT inspect which keys are active inside the currently running emulator.",
+                "Undercover saved input profile", MessageBoxButtons.OK,
+                info.Status is Pcsx2GameInputInspector.Kind.SharedBindings or
+                               Pcsx2GameInputInspector.Kind.AmbiguousCrc or
+                               Pcsx2GameInputInspector.Kind.InvalidFile
+                    ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        }
+        catch (Exception ex) { Error("Saved input profile inspection", ex); }
     }
 
     private void ShowBindings()
