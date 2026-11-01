@@ -1092,6 +1092,10 @@ internal static class Program
                   Pcsx2GameGraphicsAudit.State.NoMatchingGameIni,
                 "exact known ELF CRC refuses unrelated saved same-serial game settings");
             var exactDoctor = SetupDoctor.Check(exactSettings, exactData);
+            Check(exactDoctor.Findings.Any(f => f.Topic == "PS2 executable CRC" &&
+                  f.Level == SetupDoctor.Severity.Ready &&
+                  f.Detail.Contains(newCrc.ToString("X8"))),
+                "Setup Doctor shows the verified boot ELF CRC with no need for a matching game config");
             Check(!exactDoctor.CopyableReport().Contains(exactData, StringComparison.OrdinalIgnoreCase) &&
                   !exactDoctor.CopyableReport().Contains(xorIso, StringComparison.OrdinalIgnoreCase),
                 "exact CRC diagnostics do not leak game image or emulator config paths");
