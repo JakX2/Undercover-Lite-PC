@@ -600,6 +600,86 @@ internal static class Program
                 "Setup Doctor reports input alignment even without a known ISO serial");
             Check(!auditDoctor.CopyableReport().Contains(auditData, StringComparison.OrdinalIgnoreCase),
                 "safe Setup Doctor report does not expose input-profile or glyph-install paths");
+            // UI-1: PC Settings edits are delta-merged into *freshly loaded*
+            // launcher.json, never replacing fields owned by other windows.
+            var hubBaseline = new LauncherSettings
+            {
+                Fullscreen = true, FastBoot = true, HideEmulatorWindow = true,
+                IsolatePcsx2Data = true, EnableCompanionHotkey = true,
+                GameImage = "undercover-original.iso",
+                Pcsx2Executable = "pcsx2-original.exe",
+                TextureSearchDirectory = "textures-original",
+                PcPromptLayout = new PcPromptLayout { Accept = "Enter", Done = "F" }
+            };
+            var hubOriginal = new LauncherSettings
+            {
+                Fullscreen = true, FastBoot = true, HideEmulatorWindow = true,
+                IsolatePcsx2Data = true, EnableCompanionHotkey = true,
+                GameImage = "undercover-original.iso",
+                Pcsx2Executable = "pcsx2-original.exe",
+                TextureSearchDirectory = "textures-original",
+                PcPromptLayout = new PcPromptLayout { Accept = "Enter", Done = "F" }
+            };
+            Check(!SettingsHubPatch.HasChanges(hubBaseline, hubOriginal),
+                "settings hub detects no pending edits before changing controls");
+            hubOriginal.Fullscreen = false;
+            hubOriginal.FastBoot = false;
+            hubOriginal.Pcsx2Executable = "pcsx2-new.exe";
+            hubOriginal.GameImage = "different-user-game.iso";
+            Check(SettingsHubPatch.HasChanges(hubBaseline, hubOriginal),
+                "display mode, fast boot and path changes mark the settings hub as dirty");
+            var latestFromOtherTool = new LauncherSettings
+            {
+                Fullscreen = true, FastBoot = true, HideEmulatorWindow = true,
+                IsolatePcsx2Data = true, EnableCompanionHotkey = true,
+                Pcsx2Executable = "pcsx2-original.exe", GameImage = "undercover-original.iso",
+                TextureSearchDirectory = "new-search-folder-from-glyph-manager",
+                PcPromptLayout = new PcPromptLayout { Accept = "W", Back = "Space", Done = "F" }
+            };
+            var originalLabels = latestFromOtherTool.PcPromptLayout;
+            var mergedFromHub = SettingsHubPatch.Merge(latestFromOtherTool, hubBaseline, hubOriginal);
+            Check(!mergedFromHub.Fullscreen && !mergedFromHub.FastBoot &&
+                  mergedFromHub.HideEmulatorWindow && mergedFromHub.IsolatePcsx2Data,
+                "settings hub changes only explicitly edited launcher toggles");
+            Check(mergedFromHub.Pcsx2Executable == "pcsx2-new.exe" &&
+                  mergedFromHub.GameImage == "different-user-game.iso",
+                "settings hub applies both edited path fields");
+            Check(mergedFromHub.TextureSearchDirectory == "new-search-folder-from-glyph-manager",
+                "settings hub preserves a separately saved texture search directory");
+            Check(ReferenceEquals(mergedFromHub.PcPromptLayout, originalLabels) &&
+                  mergedFromHub.PcPromptLayout.Accept == "W" &&
+                  mergedFromHub.PcPromptLayout.Back == "Space",
+                "settings hub does not reset name-entry key labels edited in another window");
+            var secondHubEdit = new LauncherSettings
+            {
+                Fullscreen = true, FastBoot = true,
+                HideEmulatorWindow = false, IsolatePcsx2Data = false,
+                EnableCompanionHotkey = false,
+                Pcsx2Executable = "pcsx2-original.exe", GameImage = "undercover-original.iso",
+                TextureSearchDirectory = "new-texture-folder",
+            };
+            var secondMerged = SettingsHubPatch.Merge(new LauncherSettings
+            {
+                TextureSearchDirectory = "texture-folder-in-between",
+                GameImage = "externally-updated.iso", PcPromptLayout = new PcPromptLayout { Done = "R" }
+            }, hubBaseline, secondHubEdit);
+            Check(secondMerged.GameImage == "externally-updated.iso" &&
+                  secondMerged.TextureSearchDirectory == "new-texture-folder" &&
+                  !secondMerged.HideEmulatorWindow &&
+                  !secondMerged.IsolatePcsx2Data &&
+                  !secondMerged.EnableCompanionHotkey &&
+                  secondMerged.PcPromptLayout.Done == "R",
+                "settings hub merges edited fields while retaining nonedited external values");
+            var settingsHubStore = new LauncherSettingsStore(Path.Combine(temp, "settings-hub-test"));
+            settingsHubStore.Save(mergedFromHub);
+            var persistedHub = settingsHubStore.Load();
+            Check(!persistedHub.Fullscreen && persistedHub.Pcsx2Executable == "pcsx2-new.exe" &&
+                  persistedHub.TextureSearchDirectory == "new-search-folder-from-glyph-manager" &&
+                  persistedHub.PcPromptLayout.Accept == "W",
+                "settings hub delta persists safely through real launcher JSON store");
+            ExpectThrows<ArgumentNullException>(() =>
+                SettingsHubPatch.Merge(null!, hubBaseline, hubOriginal),
+                "settings hub refuses null target instead of destroying configuration");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
