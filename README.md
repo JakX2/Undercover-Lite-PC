@@ -169,3 +169,14 @@ The **PC Input Lab** now has a **Steering presets...** screen with three distinc
 
 **Important discovery from the official PCSX2 2.8.2 source:** the default emulator **Space hotkey toggles pause**, potentially conflicting with our Space handbrake. The Steering Lab includes a read-only hotkey check and guides you to change that emulator hotkey manually if necessary. The tool never silently edits shared PCSX2 hotkeys or applies profiles to a game. Use Undercover Game Properties > Summary > Input Profile to select one. See [Steering and Menu 0.10 guide](docs/STEERING_AND_MENU_0_10.md).
 
+
+
+## 0.11: Correct the old controller key labels
+
+**The developer reported the on-screen keys still didn't match the keys to press.** We found concrete mismatches: the previous 0.7 controller art said **B = Speedbreaker, Esc = Pause, 1–4 = D-pad and arrows = right stick**, whereas the generated 0.9/0.10 input profiles use **X, F, arrows and IJKL**, respectively.
+
+A new original 0.11 sprite generator reads the **same C# controller mapping source as the PCSX2 input profile**, producing all ten captured 32px PS2 icons and a corrected 256px diagram. The GitHub Actions downloadable ZIP includes 11 original replacement PNGs per region, with automated drift detection. It does **not** automatically activate any profile or make PS2 buttons context-aware, and still needs gameplay testing. See [0.11 artwork/input alignment](docs/INPUT_ALIGNED_GLYPHS_0_11.md).
+
+
+
+The updated **Setup Doctor** also flags the known 0.7 false labels and reports whether `UndercoverLite-DrivingFirst.ini` agrees with a registered 0.11 theme. **It does not inspect the active PCSX2 profile selection**, so you must still select the correct profile manually.

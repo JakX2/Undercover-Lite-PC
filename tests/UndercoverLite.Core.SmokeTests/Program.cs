@@ -557,6 +557,49 @@ internal static class Program
             var corrected = Pcsx2HotkeyAudit.Scan(steeringData);
             Check(corrected.Findings.All(f => !f.Description.Contains("Conflict confirmed")),
                 "auditor recognizes customized emulator hotkeys without modifying them");
+            // 0.11: profile-to-glyph audit differentiates known-wrong old
+            // controller art from freshly generated input-aligned themes.
+            var auditData = Path.Combine(temp, "profile-glyph-alignment");
+            var auditProfileDirectory = UndercoverKeyboardProfile.GetProfileDirectory(auditData);
+            Directory.CreateDirectory(auditProfileDirectory);
+            var auditIni = Path.Combine(auditProfileDirectory, UndercoverKeyboardProfile.FileName);
+            File.WriteAllText(auditIni, UndercoverKeyboardProfile.RenderIni());
+            var noTheme = InputAlignmentAudit.Inspect(auditData, "SLUS-21801");
+            Check(noTheme.ExpectedProfileExists && noTheme.ExpectedProfileUnmodified &&
+                  noTheme.ThemeKnownMatched is null,
+                "alignment check reads exact expected input profile but does not invent an active glyph theme");
+            var auditOldPack = Path.Combine(temp, "audit-old-atlas-pack");
+            var auditNewPack = Path.Combine(temp, "audit-new-correct-pack");
+            foreach (var folder in new[] { auditOldPack, auditNewPack })
+            {
+                Directory.CreateDirectory(Path.Combine(folder, "replacements"));
+                File.WriteAllBytes(Path.Combine(folder, "replacements", "1111111111111111-00001554.png"),
+                    [1, 2, 3]);
+            }
+            File.WriteAllText(Path.Combine(auditOldPack, "glyph-pack.json"),
+                """{"schemaVersion":1,"id":"audit-old-atlas","name":"Undercover Lite PC driving-first + keyboard diagram [SLUS-21801]","gameSerial":"SLUS-21801"}""");
+            File.WriteAllText(Path.Combine(auditNewPack, "glyph-pack.json"),
+                """{"schemaVersion":1,"id":"audit-new-aligned","name":"Undercover Lite PC matched driving keys 0.11 [SLUS-21801]","gameSerial":"SLUS-21801"}""");
+            var auditSettings = new LauncherSettings { IsolatePcsx2Data = true };
+            ManagedGlyphThemes.Activate(auditOldPack, "SLUS-21801", auditData);
+            var oldAudit = InputAlignmentAudit.Inspect(auditData, "SLUS-21801");
+            Check(oldAudit.ThemeKnownMatched == false &&
+                  oldAudit.Message.Contains("incorrect key labels"),
+                "old 0.7 registered atlas theme is clearly flagged as mismatched");
+            ManagedGlyphThemes.Activate(auditNewPack, "SLUS-21801", auditData);
+            var correctedAudit = InputAlignmentAudit.Inspect(auditData, "SLUS-21801");
+            Check(correctedAudit.ThemeKnownMatched == true &&
+                  correctedAudit.Message.Contains("Active PCSX2 selection and actual texture pixels are not verified"),
+                "new 0.11 declared mapping and intact input profile align without claiming gameplay verification");
+            File.WriteAllText(auditIni, "# overridden player profile\n");
+            Check(InputAlignmentAudit.Inspect(auditData, "SLUS-21801").ThemeKnownMatched == false,
+                "modified input profile invalidates declared image-to-key alignment");
+            var auditDoctor = SetupDoctor.Check(new LauncherSettings(), auditData);
+            Check(auditDoctor.Findings.Any(f => f.Topic == "Input/icon alignment" &&
+                  f.Level == SetupDoctor.Severity.Notice),
+                "Setup Doctor reports input alignment even without a known ISO serial");
+            Check(!auditDoctor.CopyableReport().Contains(auditData, StringComparison.OrdinalIgnoreCase),
+                "safe Setup Doctor report does not expose input-profile or glyph-install paths");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
