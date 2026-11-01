@@ -206,3 +206,10 @@ The six-tab PC Settings window now supports a **real internal-resolution selecto
 The **PC Settings → Controls** tab can now inspect the **saved** PCSX2 game-specific input selection. It uses PCSX2 2.8.2's actual **SERIAL_ELFCRC.ini** game-settings convention and **[EmuCore] InputProfileName** key, only when a single INI matches the verified Undercover ISO serial. It checks whether the selected profile file exists and whether its bindings match the original Undercover Lite DrivingFirst or steering preset source. **Setup Doctor** warns about a saved Shared/custom profile while a keyboard glyph theme is registered.
 
 This read-only inspector **does not see live emulator input**, and refuses to guess among multiple CRCs, unknown compressed disc serials or custom folder locations. See the [0.14 saved game input selection guide](docs/GAME_INPUT_SELECTION_UI_3.md).
+
+
+## Prototype 0.15: Diagnose game-specific graphics overrides
+
+The **PC Settings → Graphics** tab now includes a read-only **Inspect game graphics...** action. It compares the saved global PCSX2 internal resolution with a uniquely identifiable Undercover-specific **SERIAL_ELFCRC.ini** override, warning if that game setting may supersede the scale selected through the launcher. **Setup Doctor** also reports a possible override without exposing private paths.
+
+This feature never edits or deletes a game override. It refuses ambiguous multiple CRCs, unknown compressed-image serials and custom configuration folders. The result comes from saved files, not live PCSX2 memory. See [0.15 graphics override guide](docs/GAME_GRAPHICS_OVERRIDE_0_15.md).
