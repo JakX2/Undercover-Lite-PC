@@ -1,0 +1,35 @@
+name: Build Original Keyboard Controller Atlas
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/build_keyboard_controller_atlas.py'
+      - 'tools/requirements.txt'
+      - 'tests/check_generated_controller_atlas.py'
+      - '.github/workflows/keyboard-controller-atlas.yml'
+  pull_request:
+    paths:
+      - 'tools/build_keyboard_controller_atlas.py'
+      - 'tools/requirements.txt'
+      - 'tests/check_generated_controller_atlas.py'
+      - '.github/workflows/keyboard-controller-atlas.yml'
+jobs:
+  atlas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow
+        run: python -m pip install -r tools/requirements.txt
+      - name: Validate generated original diagram
+        run: python tests/check_generated_controller_atlas.py
+      - name: Generate standalone atlas-only replacement packs
+        run: python tools/build_keyboard_controller_atlas.py --out dist/undercover-keyboard-controller
+      - name: Upload original atlas-only artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UndercoverLitePC-keyboard-controller-atlas-only
+          path: dist/undercover-keyboard-controller.zip
+          if-no-files-found: error
