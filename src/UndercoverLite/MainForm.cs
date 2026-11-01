@@ -43,7 +43,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Undercover Lite PC | Prototype 0.5";
+        Text = "Undercover Lite PC | Prototype 0.8";
         MinimumSize = new Size(800, 730);
         Size = new Size(980, 765);
         StartPosition = FormStartPosition.CenterScreen;
@@ -80,7 +80,7 @@ public sealed class MainForm : Form
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         header.Controls.Add(NewLabel("UNDERCOVER LITE PC", 22, AccentColor, bold: true), 0, 0);
         header.Controls.Add(NewLabel("An emulation-backed PC launcher for Need for Speed Undercover (PS2)", 10, Color.White), 0, 1);
-        header.Controls.Add(NewLabel("Prototype 0.5  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
+        header.Controls.Add(NewLabel("Prototype 0.8  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
         layout.Controls.Add(header, 0, 0);
 
         var paths = NewCard();
@@ -155,7 +155,7 @@ public sealed class MainForm : Form
         footer.Controls.Add(_status, 0, 0);
         var inputHelp = new LinkLabel
         {
-            Text = "First run? Click here for PCSX2 keyboard and controller setup instructions.",
+            Text = "First run? PCSX2 keyboard/controller setup instructions.",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             LinkColor = AccentColor,
@@ -190,13 +190,37 @@ public sealed class MainForm : Form
             Font = new Font("Segoe UI", 9F),
         };
         pcInput.Click += (_, _) => { using var lab = new PcInputLabForm(_store); lab.ShowDialog(this); };
-        var helpLinks = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
-        helpLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 53));
-        helpLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24));
-        helpLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 23));
+        var setupDoctor = new LinkLabel
+        {
+            Text = "Setup Doctor...",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            LinkColor = AccentColor,
+            ActiveLinkColor = Color.White,
+            VisitedLinkColor = AccentColor,
+            Font = new Font("Segoe UI", 9F),
+        };
+        setupDoctor.Click += (_, _) =>
+        {
+            try
+            {
+                using var doctor = new SetupDoctorForm(ReadUi(), _store.Pcsx2DataDirectory);
+                doctor.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                ShowError("Could not open Setup Doctor. Check the launcher settings file.", ex);
+            }
+        };
+        var helpLinks = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1 };
+        helpLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        helpLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 21));
+        helpLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 21));
+        helpLinks.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 16));
         helpLinks.Controls.Add(inputHelp, 0, 0);
         helpLinks.Controls.Add(glyphHelp, 1, 0);
         helpLinks.Controls.Add(pcInput, 2, 0);
+        helpLinks.Controls.Add(setupDoctor, 3, 0);
         footer.Controls.Add(helpLinks, 0, 1);
         footer.Controls.Add(NewLabel("Session menu: Ctrl+Shift+F10 when running (if enabled). External Windows overlay, not a PS2 patch.", 9, MutedColor), 0, 2);
         layout.Controls.Add(footer, 0, 4);

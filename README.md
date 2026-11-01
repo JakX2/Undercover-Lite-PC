@@ -145,3 +145,11 @@ The developer's full 97-image PCSX2 dump contains a separate **256×256 controll
 The 0.7 user-facing proof pack combines the existing ten driving-first keyboard sprites with the new controller atlas (11 PNGs per game serial). The repo includes a reproducible game-data-free Python/Pillow generator, CI validations and an atlas-only Actions artifact. For complete packs, run the generator with your previously generated 0.5b keyboard-keycap proof ZIP using `--source-poc`. Source game texture images are never committed.
 
 **Only the individual Cross → W glyph has so far been confirmed working in-game; the large controller atlas still needs validation.** Consult [the 0.7 controller-diagram guide](docs/CONTROLLER_DIAGRAM_0_7.md), and keep a backup of your existing textures before trying new themes.
+
+
+## Prototype 0.8: Read-only Setup Doctor
+
+A **Setup Doctor...** link in the Windows launcher now checks PCSX2 executable selection, verified Undercover ISO serials, isolated profile choices, texture search folder existence, the old-versus-nested texture directory bug, and the presence of our 11 known prompt/controller hashes. It also reports managed glyph state without implying that textures are actually loaded in-game.
+
+The doctor **never launches PCSX2 or modifies your configuration, game files or textures**. Its **Copy safe report** action excludes local paths and filenames, so troubleshooting information can be shared more safely. BIOS readiness, live controller bindings and texture-loading settings remain unverified and must be tested in PCSX2. See [Setup Doctor 0.8 guide](docs/SETUP_DOCTOR_0_8.md).
+
