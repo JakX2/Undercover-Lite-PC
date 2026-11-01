@@ -20,7 +20,7 @@ public static class SetupDoctor
         {
             var lines = new List<string>
             {
-                "Undercover Lite PC | Setup Doctor 0.11",
+                "Undercover Lite PC | Setup Doctor 0.14",
                 "PCSX2 target: 2.8.2 Qt (actual binary version not inspected)",
                 "Disc: " + (VerifiedSerial ?? "unverified / not selected"),
                 $"Blocking findings: {Blockers}; attention items: {ActionItems - Blockers}",
@@ -193,6 +193,52 @@ public static class SetupDoctor
             Add(Severity.ActionNeeded, "Input/icon alignment",
                 "The keyboard profile or registered glyph theme could not be inspected safely.",
                 "Verify the profile and theme in PCSX2 and Undercover Lite before changing any files.");
+        }
+
+        // UI-3 inspects the saved per-game serial+CRC INI, not the runtime.
+        // Disk selection may be stale if PCSX2 remains open.
+        var selected = Pcsx2GameInputInspector.Inspect(settings, pcsx2DataDirectory);
+        if (selected.Status is Pcsx2GameInputInspector.Kind.SelectedProfile or
+                               Pcsx2GameInputInspector.Kind.SharedBindings)
+        {
+            var selectedIssue = selected.Status == Pcsx2GameInputInspector.Kind.SharedBindings ||
+                selected.SelectedProfileFileExists == false ||
+                selected.RecognizedProfileMatchesSource == false;
+            Add(selectedIssue ? Severity.ActionNeeded : Severity.Ready,
+                "Saved game input profile", selected.Summary, selected.NextStep);
+        }
+        else Add(selected.Status is Pcsx2GameInputInspector.Kind.AmbiguousCrc or
+                                     Pcsx2GameInputInspector.Kind.InvalidFile
+                         ? Severity.ActionNeeded : Severity.Notice,
+                "Saved game input profile", selected.Summary, selected.NextStep);
+
+        if (serial is not null && selected.HasProvenSelection)
+        {
+            try
+            {
+                var theme = ManagedGlyphThemes.ActivePack(serial, pcsx2DataDirectory,
+                    GlyphPackManager.GetTextureSearchDirectory(
+                        pcsx2DataDirectory, settings.TextureSearchDirectory));
+                bool matchedTheme = theme?.Contains(
+                    "matched driving keys 0.11", StringComparison.OrdinalIgnoreCase) == true;
+                if (matchedTheme && (selected.Status == Pcsx2GameInputInspector.Kind.SharedBindings ||
+                    selected.RecognizedProfileMatchesSource != true))
+                    Add(Severity.ActionNeeded, "Glyph/profile compatibility",
+                        "The 0.11 keyboard glyph theme is registered, but the saved Undercover game input " +
+                        "profile is Shared, missing, custom, or modified. Displayed keys may not work.",
+                        "Select an unchanged UndercoverLite-DrivingFirst profile in PCSX2 Game Properties, " +
+                        "or switch to glyph artwork matching the actual selected bindings.");
+                else if (matchedTheme)
+                    Add(Severity.Ready, "Glyph/profile compatibility",
+                        "The saved per-game input profile and 0.11 keyboard glyph theme have compatible " +
+                        "declared driving keys; live PCSX2 input and texture loading remain unverified.");
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or
+                                       InvalidDataException or ArgumentException or System.Text.Json.JsonException)
+            {
+                Add(Severity.Notice, "Glyph/profile compatibility",
+                    "Theme and saved profile compatibility could not be determined safely.");
+            }
         }
 
         Add(Severity.Notice, "Runtime verification",
