@@ -890,6 +890,99 @@ internal static class Program
                   !selectionDoctor.CopyableReport().Contains(correctGameIni,
                     StringComparison.OrdinalIgnoreCase),
                 "saved game profile inspection keeps absolute paths out of safe diagnostic reports");
+            // UI-4: read-only discovery of saved global vs per-game PCSX2
+            // internal resolution. Never claim actual ELF CRC is verified.
+            var graphicsAuditData = Path.Combine(temp, "graphics-override-audit");
+            var graphicsAuditSettings = new LauncherSettings
+            {
+                IsolatePcsx2Data = true, GameImage = validDisc
+            };
+            var noGraphics = Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData);
+            Check(noGraphics.Status == Pcsx2GameGraphicsAudit.State.ConfigurationMissing &&
+                  !Directory.Exists(graphicsAuditData),
+                "per-game graphics check requires existing PCSX2 config and never creates files");
+            Check(Pcsx2GameGraphicsAudit.Inspect(
+                new LauncherSettings { IsolatePcsx2Data = false, GameImage = validDisc },
+                graphicsAuditData).Status == Pcsx2GameGraphicsAudit.State.SharedProfile,
+                "per-game graphics check refuses external shared PCSX2 settings");
+            Check(Pcsx2GameGraphicsAudit.Inspect(
+                new LauncherSettings { IsolatePcsx2Data = true, GameImage = compressed },
+                graphicsAuditData).Status == Pcsx2GameGraphicsAudit.State.UnverifiedDisc,
+                "per-game graphics check does not assume compressed image serial");
+            var graphicsAuditIni = Path.Combine(graphicsAuditData, "PCSX2", "inis", "PCSX2.ini");
+            var graphicsGameFolder = Path.Combine(graphicsAuditData, "PCSX2", "gamesettings");
+            Directory.CreateDirectory(Path.GetDirectoryName(graphicsAuditIni)!);
+            File.WriteAllText(graphicsAuditIni,
+                "[Folders]\nGameSettings = gamesettings\n[EmuCore/GS]\nupscale_multiplier = 3.0\n");
+            var missingGraphicsGame = Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData);
+            Check(missingGraphicsGame.Status == Pcsx2GameGraphicsAudit.State.NoMatchingGameIni &&
+                  missingGraphicsGame.GlobalScale == 3.0f && missingGraphicsGame.GameScale is null,
+                "global graphics scale shown without inventing a game-specific override");
+            Directory.CreateDirectory(graphicsGameFolder);
+            File.WriteAllText(Path.Combine(graphicsGameFolder, "SLES-55353_AAAAAAAA.ini"),
+                "[EmuCore/GS]\nupscale_multiplier = 8.0\n");
+            File.WriteAllText(Path.Combine(graphicsGameFolder, "DEADBEEF.ini"),
+                "[EmuCore/GS]\nupscale_multiplier = 8.0\n");
+            var gameGraphicsIni = Path.Combine(graphicsGameFolder, "SLUS-21801_1234ABCD.ini");
+            File.WriteAllText(gameGraphicsIni, "[EmuCore/GS]\nupscale_multiplier = 2.0\n");
+            var conflictingGraphics = Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData);
+            Check(conflictingGraphics.Status == Pcsx2GameGraphicsAudit.State.OverridePresent &&
+                  conflictingGraphics.GlobalScale == 3f && conflictingGraphics.GameScale == 2f &&
+                  conflictingGraphics.HasPossibleDifferentOverride && conflictingGraphics.CandidateCount == 1,
+                "detects game-specific override that may supersede saved 3x global scale");
+            Check(!conflictingGraphics.Summary.Contains(graphicsAuditData, StringComparison.OrdinalIgnoreCase),
+                "read-only graphics summary does not expose local profile paths");
+            File.WriteAllText(gameGraphicsIni,
+                "[UI]\nWindow = normal\n[EmuCore/GS]\nupscale_multiplier = 3.0\n");
+            var sameGraphics = Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData);
+            Check(sameGraphics.Status == Pcsx2GameGraphicsAudit.State.OverridePresent &&
+                  !sameGraphics.HasPossibleDifferentOverride && sameGraphics.GameScale == 3f,
+                "matching global and game override values are not labeled a conflict");
+            File.WriteAllText(gameGraphicsIni, "[UI]\nWindow = normal\n[EmuCore/GS]\nRenderer = 14\n");
+            var noGameScale = Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData);
+            Check(noGameScale.Status == Pcsx2GameGraphicsAudit.State.UniqueGameIni &&
+                  noGameScale.GameScale is null && noGameScale.GlobalScale == 3f,
+                "unique saved game config without GS override is distinguished from an override");
+            File.WriteAllText(gameGraphicsIni,
+                "[EmuCore/GS]\nupscale_multiplier = 2.5\n");
+            Check(Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData)
+                    .GameScale == 2.5f,
+                "inspector reads a valid float override without restricting PCSX2-supported values");
+            File.WriteAllText(gameGraphicsIni,
+                "[EmuCore/GS]\nupscale_multiplier = NaN\n");
+            Check(Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData).Status ==
+                  Pcsx2GameGraphicsAudit.State.InvalidConfiguration,
+                "malformed override cannot be misreported as a valid scale");
+            File.WriteAllText(gameGraphicsIni,
+                "[EmuCore/GS]\nupscale_multiplier = 2.0\nupscale_multiplier = 3.0\n");
+            Check(Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData).Status ==
+                  Pcsx2GameGraphicsAudit.State.InvalidConfiguration,
+                "ambiguous duplicate game graphics keys are refused");
+            File.WriteAllText(gameGraphicsIni, "[EmuCore/GS]\nupscale_multiplier = 2.0\n");
+            var extraGraphicsIni = Path.Combine(graphicsGameFolder, "SLUS-21801_00000000.ini");
+            File.WriteAllText(extraGraphicsIni, "[EmuCore/GS]\nupscale_multiplier = 1.0\n");
+            Check(Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData).Status ==
+                  Pcsx2GameGraphicsAudit.State.MultipleCrcs,
+                "distinct ELF CRC game configs are not guessed from disc serial");
+            File.Delete(extraGraphicsIni);
+            File.WriteAllText(graphicsAuditIni,
+                "[Folders]\nGameSettings = ../../other-folder\n[EmuCore/GS]\nupscale_multiplier = 3.0\n");
+            Check(Pcsx2GameGraphicsAudit.Inspect(graphicsAuditSettings, graphicsAuditData).Status ==
+                  Pcsx2GameGraphicsAudit.State.CustomFolder,
+                "custom PCSX2 GameSettings folder is not traversed by the graphics audit");
+            File.WriteAllText(graphicsAuditIni,
+                "[Folders]\nGameSettings = gamesettings\n[EmuCore/GS]\nupscale_multiplier = 3.0\n");
+            var graphicsDoctor = SetupDoctor.Check(graphicsAuditSettings, graphicsAuditData);
+            Check(graphicsDoctor.Findings.Any(f => f.Topic == "Saved game graphics override" &&
+                  f.Level == SetupDoctor.Severity.ActionNeeded),
+                "Setup Doctor warns if per-game graphics override differs from saved global setting");
+            Check(!graphicsDoctor.CopyableReport().Contains(graphicsAuditData,
+                    StringComparison.OrdinalIgnoreCase),
+                "safe diagnostic report redacts paths from game override inspection");
+            Check(File.ReadAllText(graphicsAuditIni).Contains("upscale_multiplier = 3.0") &&
+                  File.ReadAllText(gameGraphicsIni).Contains("upscale_multiplier = 2.0"),
+                "all game/global graphics inspection operations were strictly read-only");
+
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
