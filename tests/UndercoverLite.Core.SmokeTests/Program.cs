@@ -1129,9 +1129,9 @@ internal static class Program
             Check(preview.Serial == "SLUS-21801" && preview.ElfCrc == newCrc.ToString("X8") &&
                   preview.GameScale == 2f && preview.GlobalScale == 3f,
                 "game editor previews exact BOOT2-CRC-specific scale");
-            var backup = Pcsx2GameGraphicsEditor.Apply(editorSettings, editorData, preview, 4);
-            Check(File.Exists(backup) &&
-                  File.ReadAllText(backup).Contains("upscale_multiplier = 2.0") &&
+            var editorBackup = Pcsx2GameGraphicsEditor.Apply(editorSettings, editorData, preview, 4);
+            Check(File.Exists(editorBackup) &&
+                  File.ReadAllText(editorBackup).Contains("upscale_multiplier = 2.0") &&
                   File.ReadAllText(editorIni).Contains("upscale_multiplier = 4.0") &&
                   File.ReadAllText(editorIni).Contains("Renderer = 14") &&
                   File.ReadAllText(editorIni).Contains("InputProfileName = UndercoverLite-DrivingFirst") &&
