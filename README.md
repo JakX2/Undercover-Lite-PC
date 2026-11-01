@@ -213,3 +213,10 @@ This read-only inspector **does not see live emulator input**, and refuses to gu
 The **PC Settings → Graphics** tab now includes a read-only **Inspect game graphics...** action. It compares the saved global PCSX2 internal resolution with a uniquely identifiable Undercover-specific **SERIAL_ELFCRC.ini** override, warning if that game setting may supersede the scale selected through the launcher. **Setup Doctor** also reports a possible override without exposing private paths.
 
 This feature never edits or deletes a game override. It refuses ambiguous multiple CRCs, unknown compressed-image serials and custom configuration folders. The result comes from saved files, not live PCSX2 memory. See [0.15 graphics override guide](docs/GAME_GRAPHICS_OVERRIDE_0_15.md).
+
+
+## Prototype 0.16: exact PS2 executable CRC from ISO
+
+The launcher can now compute **PCSX2's actual BOOT2 ELF XOR CRC** directly from a verified uncompressed Undercover PS2 ISO. Open **PC Settings → Troubleshooting → Identify ELF CRC...** or **Setup Doctor**. The saved game-input-profile and graphics-override inspectors use this exact CRC to select the right serial-and-CRC game configuration, and honor PCSX2's CRC-only legacy fallback. Multiple old config files for the same disc edition no longer require guessing when the boot ELF is readable.
+
+This is a bounded read-only ISO operation. It doesn't edit or extract game files, modify PCSX2, or inspect the currently running emulator. More detail in the [0.16 exact ELF CRC guide](docs/EXACT_ELF_CRC_0_16.md).

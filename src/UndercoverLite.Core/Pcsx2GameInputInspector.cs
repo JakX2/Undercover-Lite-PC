@@ -160,30 +160,51 @@ public static class Pcsx2GameInputInspector
                     "The PCSX2 game-settings directory is redirected or linked.",
                     "Verify the actual game settings location in PCSX2.");
 
-            // Only filenames of exactly <VERIFIED_SERIAL>_<EIGHT-HEX-CRC>.ini.
-            // Never attribute a legacy CRC-only INI to a disc without its ELF CRC.
-            var matches = Directory.EnumerateFiles(directory, serial + "_*.ini",
-                    SearchOption.TopDirectoryOnly)
-                .Where(p =>
-                    Path.GetFileName(p).StartsWith(serial + "_", StringComparison.OrdinalIgnoreCase) &&
-                    GameFileSuffix.IsMatch(Path.GetFileName(p)[(serial.Length + 1)..]))
-                .Take(2).ToList();
-            if (matches.Count == 0)
-                return Report(Kind.NoGameFile, serial,
-                    "No serial-and-CRC per-game INI matches this verified Undercover edition.",
-                    "PCSX2 may use Shared settings, a legacy CRC-only file, or a different folder. " +
-                    "Check Undercover Game Properties manually.");
-            if (matches.Count > 1)
-                return Report(Kind.AmbiguousCrc, serial,
-                    "Multiple game-setting INIs match this disc serial but have different ELF CRCs.",
-                    "Choose the correct Undercover entry in PCSX2's game list; this tool will not guess.",
-                    candidates: matches.Count);
+            // If the ISO contains its BOOT2 ELF, match PCSX2's actual XOR CRC
+            // and honor VMManager's serial-specific -> legacy CRC-only fallback.
+            // Without a validated ELF we keep the older conservative unique-
+            // candidate heuristic, explicitly not claiming to know the active CRC.
+            var elf = Ps2ElfCrcInspector.Inspect(settings.GameImage);
+            List<string> matches;
+            bool exactCrc = elf.State == Ps2ElfCrcInspector.Status.Verified && elf.Hex is not null;
+            if (exactCrc)
+            {
+                string named = Path.Combine(directory, $"{serial}_{elf.Hex}.ini");
+                string legacy = Path.Combine(directory, elf.Hex + ".ini");
+                matches = File.Exists(named) ? [named] : File.Exists(legacy) ? [legacy] : [];
+                if (matches.Count == 0)
+                    return Report(Kind.NoGameFile, serial,
+                        $"ELF CRC {elf.Hex} verified from the ISO, but no matching PCSX2 game-settings INI exists.",
+                        "Open the Undercover entry in PCSX2 Game Properties. A different executable or data folder " +
+                        "may be active; no other CRC was guessed.");
+            }
+            else
+            {
+                matches = Directory.EnumerateFiles(directory, serial + "_*.ini",
+                        SearchOption.TopDirectoryOnly)
+                    .Where(p =>
+                        Path.GetFileName(p).StartsWith(serial + "_", StringComparison.OrdinalIgnoreCase) &&
+                        GameFileSuffix.IsMatch(Path.GetFileName(p)[(serial.Length + 1)..]))
+                    .Take(2).ToList();
+                if (matches.Count == 0)
+                    return Report(Kind.NoGameFile, serial,
+                        "No serial-and-CRC per-game INI matches this verified Undercover edition; " +
+                        "the BOOT2 executable CRC could not be confirmed.",
+                        "PCSX2 may use Shared, a legacy CRC-only file, or a different folder. " +
+                        "Check Undercover Game Properties manually.");
+                if (matches.Count > 1)
+                    return Report(Kind.AmbiguousCrc, serial,
+                        "Multiple game INIs share this disc serial and the BOOT2 ELF CRC is unverified.",
+                        "Choose the correct Undercover entry in PCSX2's game list; this tool will not guess.",
+                        candidates: matches.Count);
+            }
 
             var gameText = ReadIni(matches[0]);
             var profile = ReadValue(gameText, "EmuCore", "InputProfileName");
             if (string.IsNullOrWhiteSpace(profile))
                 return Report(Kind.SharedBindings, serial,
-                    "The unique matching per-game INI has no InputProfileName; PCSX2 selects Shared bindings.",
+                    (exactCrc ? "The exact ELF-CRC game INI" : "The sole serial candidate game INI") +
+                    " has no InputProfileName; its saved selection uses Shared bindings.",
                     "Select an UndercoverLite input profile in Undercover Game Properties if using keyboard glyphs.",
                     candidates: 1);
 
@@ -211,7 +232,7 @@ public static class Pcsx2GameInputInspector
                 null => "It is a custom/unknown profile; its keys were not verified."
             };
             return Report(Kind.SelectedProfile, serial,
-                $"The unique saved Undercover game settings select {profile}. {note} " +
+                $"The {(exactCrc ? "CRC-matched" : "single candidate")} saved Undercover game settings select {profile}. {note} " +
                 "This is a DISK configuration read, not a live emulator confirmation.",
                 "Close PCSX2 before changes; inspect the in-game controls and glyph theme together.",
                 profile, true, matching, 1);

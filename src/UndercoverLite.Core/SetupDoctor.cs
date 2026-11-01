@@ -20,7 +20,7 @@ public static class SetupDoctor
         {
             var lines = new List<string>
             {
-                "Undercover Lite PC | Setup Doctor 0.15",
+                "Undercover Lite PC | Setup Doctor 0.16",
                 "PCSX2 target: 2.8.2 Qt (actual binary version not inspected)",
                 "Disc: " + (VerifiedSerial ?? "unverified / not selected"),
                 $"Blocking findings: {Blockers}; attention items: {ActionItems - Blockers}",
@@ -97,6 +97,21 @@ public static class SetupDoctor
             else Add(Severity.ActionNeeded, "Game identification",
                     "The image exists but its Undercover PS2 identity could not be confirmed.",
                     "Check the image in PCSX2 or use a verified uncompressed ISO.");
+        }
+
+        if (serial is not null)
+        {
+            var elf = Ps2ElfCrcInspector.Inspect(settings.GameImage);
+            if (elf.State == Ps2ElfCrcInspector.Status.Verified)
+                Add(Severity.Ready, "PS2 executable CRC",
+                    $"BOOT2 ELF XOR CRC {elf.Hex} identified directly from the verified ISO. " +
+                    "PCSX2 game-settings filename can now be matched by exact serial + ELF CRC; " +
+                    "the running emulator process is not checked.");
+            else
+                Add(Severity.Notice, "PS2 executable CRC",
+                    "The disc serial is verified but its BOOT2 executable CRC could not be read. " +
+                    "Input and graphics reports may need conservative serial-only matching.",
+                    "Check the game image and ISO contents. No external files were modified.");
         }
 
         if (!settings.IsolatePcsx2Data)

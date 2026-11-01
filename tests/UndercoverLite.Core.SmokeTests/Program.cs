@@ -51,6 +51,21 @@ internal static class Program
         return size;
     }
 
+    // Root-dir PS2 ISO with a tiny synthetic executable. All bytes are
+    // generated in the test, no copyrighted game data is needed.
+    private static void WriteSyntheticIsoWithElf(string iso, byte[] elf)
+    {
+        WriteSyntheticIso(iso, "BOOT2 = cdrom0:\\SLUS_218.01;1\nVER = 1.00\n");
+        var bytes = File.ReadAllBytes(iso);
+        int recordOffset = 20 * 2048;
+        while (bytes[recordOffset] != 0)
+            recordOffset += bytes[recordOffset];
+        WriteRecord(bytes, recordOffset,
+            System.Text.Encoding.ASCII.GetBytes("SLUS_218.01;1"), 22, elf.Length);
+        elf.CopyTo(bytes, 22 * 2048);
+        File.WriteAllBytes(iso, bytes);
+    }
+
     public static int Main()
     {
         var temp = Path.Combine(Path.GetTempPath(), "UndercoverLite-Smoke-" + Guid.NewGuid().ToString("N"));
@@ -983,6 +998,107 @@ internal static class Program
                   File.ReadAllText(gameGraphicsIni).Contains("upscale_multiplier = 2.0"),
                 "all game/global graphics inspection operations were strictly read-only");
 
+            // 0.16: PCSX2 ELF CRC is the XOR of all complete 32-bit little
+            // endian words of BOOT2 ELF, NOT polynomial CRC-32.
+            var xorIso = Path.Combine(temp, "undercover-with-elf.iso");
+            var elfBytes = new byte[67]; // three trailing bytes are ignored
+            elfBytes[0] = 0x7F;
+            elfBytes[1] = (byte)'E';
+            elfBytes[2] = (byte)'L';
+            elfBytes[3] = (byte)'F';
+            elfBytes[4] = 1; elfBytes[5] = 1;
+            elfBytes[8] = 1; elfBytes[9] = 2; elfBytes[10] = 3; elfBytes[11] = 4;
+            elfBytes[12] = 5; elfBytes[13] = 6; elfBytes[14] = 7; elfBytes[15] = 8;
+            WriteSyntheticIsoWithElf(xorIso, elfBytes);
+            uint xorExpected = 0x464c457fu ^ 0x00000101u ^ 0x04030201u ^ 0x08070605u;
+            var xorResult = Ps2ElfCrcInspector.Inspect(xorIso);
+            Check(xorResult.State == Ps2ElfCrcInspector.Status.Verified &&
+                  xorResult.Crc == xorExpected &&
+                  xorResult.Serial == "SLUS-21801" &&
+                  xorResult.Hex == xorExpected.ToString("X8"),
+                "exact PCSX2 word XOR CRC from boot executable inside ISO9660");
+            elfBytes[66] = 0xFF;
+            WriteSyntheticIsoWithElf(xorIso, elfBytes);
+            Check(Ps2ElfCrcInspector.Inspect(xorIso).Crc == xorExpected,
+                "PCSX2 CRC ignores trailing 1 to 3 executable bytes");
+            elfBytes[60] = 0xA5;
+            WriteSyntheticIsoWithElf(xorIso, elfBytes);
+            uint newCrc = xorExpected ^ 0x000000A5u;
+            Check(Ps2ElfCrcInspector.Inspect(xorIso).Crc == newCrc,
+                "changing a full little-endian word changes PCSX2 XOR CRC exactly");
+            elfBytes[0] = 0;
+            WriteSyntheticIsoWithElf(xorIso, elfBytes);
+            Check(Ps2ElfCrcInspector.Inspect(xorIso).State ==
+                  Ps2ElfCrcInspector.Status.InvalidElf,
+                "ELF CRC inspector refuses non-ELF boot payloads");
+            elfBytes[0] = 0x7F;
+            WriteSyntheticIsoWithElf(xorIso, elfBytes);
+            Check(Ps2ElfCrcInspector.Inspect(validDisc).State ==
+                  Ps2ElfCrcInspector.Status.NotFound,
+                "verified boot serial alone does not fabricate ELF CRC");
+
+            var exactData = Path.Combine(temp, "exact-elf-crc-config");
+            var exactIni = Path.Combine(exactData, "PCSX2", "inis", "PCSX2.ini");
+            var exactGames = Path.Combine(exactData, "PCSX2", "gamesettings");
+            var exactInputs = Path.Combine(exactData, "PCSX2", "inputprofiles");
+            Directory.CreateDirectory(Path.GetDirectoryName(exactIni)!);
+            Directory.CreateDirectory(exactGames);
+            Directory.CreateDirectory(exactInputs);
+            File.WriteAllText(exactIni,
+                "[Folders]\nGameSettings = gamesettings\nInputProfiles = inputprofiles\n" +
+                "[EmuCore/GS]\nupscale_multiplier = 3.0\n");
+            var exactSettings = new LauncherSettings { IsolatePcsx2Data = true, GameImage = xorIso };
+            var exactNamed = Path.Combine(exactGames, "SLUS-21801_" + newCrc.ToString("X8") + ".ini");
+            var exactLegacy = Path.Combine(exactGames, newCrc.ToString("X8") + ".ini");
+            File.WriteAllText(exactNamed,
+                "[EmuCore]\nInputProfileName = UndercoverLite-DrivingFirst\n" +
+                "[EmuCore/GS]\nupscale_multiplier = 2.0\n");
+            File.WriteAllText(Path.Combine(exactGames, "SLUS-21801_DEADBEEF.ini"),
+                "[EmuCore]\nInputProfileName = SomeOtherCrc\n" +
+                "[EmuCore/GS]\nupscale_multiplier = 5.0\n");
+            File.WriteAllText(Path.Combine(exactInputs, UndercoverKeyboardProfile.FileName),
+                UndercoverKeyboardProfile.RenderIni());
+            var exactInputSelection = Pcsx2GameInputInspector.Inspect(exactSettings, exactData);
+            var exactGraphicsSelection = Pcsx2GameGraphicsAudit.Inspect(exactSettings, exactData);
+            Check(exactInputSelection.Status == Pcsx2GameInputInspector.Kind.SelectedProfile &&
+                  exactInputSelection.SelectedProfile == UndercoverKeyboardProfile.Name &&
+                  exactInputSelection.RecognizedProfileMatchesSource == true &&
+                  exactInputSelection.Summary.Contains("CRC-matched"),
+                "input inspector selects actual ELF CRC among multiple serial-matching game INIs");
+            Check(exactGraphicsSelection.Status == Pcsx2GameGraphicsAudit.State.OverridePresent &&
+                  exactGraphicsSelection.GlobalScale == 3.0f &&
+                  exactGraphicsSelection.GameScale == 2.0f &&
+                  exactGraphicsSelection.HasPossibleDifferentOverride &&
+                  exactGraphicsSelection.Summary.Contains("ELF-CRC-matched"),
+                "graphics inspector uses exact BOOT2 ELF CRC instead of ambiguous filename guess");
+            File.Delete(exactNamed);
+            File.WriteAllText(exactLegacy,
+                "[EmuCore]\nInputProfileName = UndercoverLite-DrivingFirst\n" +
+                "[EmuCore/GS]\nupscale_multiplier = 4.0\n");
+            Check(Pcsx2GameInputInspector.Inspect(exactSettings, exactData).Status ==
+                  Pcsx2GameInputInspector.Kind.SelectedProfile &&
+                  Pcsx2GameGraphicsAudit.Inspect(exactSettings, exactData).GameScale == 4.0f,
+                "serial-specific file absent triggers PCSX2 legacy CRC-only INI fallback");
+            File.WriteAllText(exactNamed,
+                "[EmuCore]\nInputProfileName = UndercoverLite-DrivingFirst\n" +
+                "[EmuCore/GS]\nupscale_multiplier = 2.0\n");
+            Check(Pcsx2GameGraphicsAudit.Inspect(exactSettings, exactData).GameScale == 2.0f,
+                "exact serial+CRC INI correctly takes precedence over legacy CRC-only INI");
+            File.Delete(exactNamed);
+            File.Delete(exactLegacy);
+            Check(Pcsx2GameInputInspector.Inspect(exactSettings, exactData).Status ==
+                  Pcsx2GameInputInspector.Kind.NoGameFile &&
+                  Pcsx2GameGraphicsAudit.Inspect(exactSettings, exactData).Status ==
+                  Pcsx2GameGraphicsAudit.State.NoMatchingGameIni,
+                "exact known ELF CRC refuses unrelated saved same-serial game settings");
+            var exactDoctor = SetupDoctor.Check(exactSettings, exactData);
+            Check(exactDoctor.Findings.Any(f => f.Topic == "PS2 executable CRC" &&
+                  f.Level == SetupDoctor.Severity.Ready &&
+                  f.Detail.Contains(newCrc.ToString("X8"))),
+                "Setup Doctor shows the verified boot ELF CRC with no need for a matching game config");
+            Check(!exactDoctor.CopyableReport().Contains(exactData, StringComparison.OrdinalIgnoreCase) &&
+                  !exactDoctor.CopyableReport().Contains(xorIso, StringComparison.OrdinalIgnoreCase),
+                "exact CRC diagnostics do not leak game image or emulator config paths");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
