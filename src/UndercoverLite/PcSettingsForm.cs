@@ -25,6 +25,7 @@ public sealed class PcSettingsForm : Form
     private readonly ComboBox _displayMode = new();
     private readonly ComboBox _internalScale = new();
     private readonly Label _gameInputState = new();
+    private readonly Label _gameGraphicsStatus = new();
     private readonly Button _scaleApply = new();
     private readonly Label _scaleState = new();
     private Pcsx2GraphicsAdapter.Snapshot? _scaleSnapshot;
@@ -49,7 +50,7 @@ public sealed class PcSettingsForm : Form
         _baseline = originalSaved;
         _initial = displayedFromLauncher;
         _gameRunning = gameRunning;
-        Text = "Undercover Lite PC | PC Settings (UI-3)";
+        Text = "Undercover Lite PC | PC Settings (UI-3 + graphics audit)";
         BackColor = Background;
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
@@ -63,6 +64,7 @@ public sealed class PcSettingsForm : Form
         RefreshDirty();
         RefreshGraphicsScale();
         RefreshGameInputSelection();
+        RefreshGameGraphicsStatus();
     }
 
     private void BuildUi()
@@ -288,6 +290,16 @@ public sealed class PcSettingsForm : Form
         _scaleState.AutoEllipsis = true;
         Row(render, "Graphics configuration", "The game must be stopped. Backups are kept alongside PCSX2.ini.",
             _scaleState, "Read-only state · Never writes game-specific overrides");
+        Row(render, "Undercover graphics override",
+            "Read the game's saved serial+CRC graphics override, without modifying any file.",
+            Action("Inspect game graphics...", ShowGameGraphicsAudit),
+            "Available now · Read-only config inspection");
+        _gameGraphicsStatus.ForeColor = Muted;
+        _gameGraphicsStatus.TextAlign = ContentAlignment.MiddleLeft;
+        _gameGraphicsStatus.AutoEllipsis = true;
+        Row(render, "Saved graphics status",
+            "Compares the global scale to a unique saved game config; active CRC is not verified.",
+            _gameGraphicsStatus, "Read-only · Game Properties can override global rendering");
         Row(render, "Anisotropic filtering", "Sharper textures on oblique surfaces.",
             Unavailable(), "Requires PCSX2 integration");
         Row(render, "Texture replacements", "Manage installed UI button glyphs and controller artwork.",
@@ -391,6 +403,7 @@ public sealed class PcSettingsForm : Form
             var backup = Pcsx2GraphicsAdapter.Apply(
                 persisted, _store.Pcsx2DataDirectory, _scaleSnapshot, multiplier);
             RefreshGraphicsScale();
+            RefreshGameGraphicsStatus();
             _status.Text = string.IsNullOrEmpty(backup)
                 ? "PCSX2 graphics scale was already set."
                 : $"{multiplier}× saved in isolated PCSX2.ini with an original-file backup. Restart PCSX2.";
@@ -490,7 +503,15 @@ public sealed class PcSettingsForm : Form
         PrepareText(_texturePath);
         _texturePath.ReadOnly = true;
         _pcsx2Path.TextChanged += (_, _) => RefreshDirty();
-        _gameImagePath.TextChanged += (_, _) => { RefreshDirty(); if (!_loading) RefreshGameInputSelection(); };
+        _gameImagePath.TextChanged += (_, _) =>
+        {
+            RefreshDirty();
+            if (!_loading)
+            {
+                RefreshGameInputSelection();
+                RefreshGameGraphicsStatus();
+            }
+        };
         _texturePath.TextChanged += (_, _) => RefreshDirty();
         Row(files, "PCSX2 Qt executable", "Local emulator program path. Nothing is bundled.",
             Picker(_pcsx2Path, SelectPcsx2), "Saved only to launcher preferences");
@@ -605,6 +626,7 @@ public sealed class PcSettingsForm : Form
             RefreshDirty();
             RefreshGraphicsScale();
             RefreshGameInputSelection();
+            RefreshGameGraphicsStatus();
             _status.Text = "Launcher settings saved. Changes take effect on the next launch.";
             return true;
         }
@@ -767,6 +789,51 @@ public sealed class PcSettingsForm : Form
                     ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
         catch (Exception ex) { Error("Saved input profile inspection", ex); }
+    }
+
+    private void RefreshGameGraphicsStatus()
+    {
+        try
+        {
+            var report = Pcsx2GameGraphicsAudit.Inspect(Edited(), _store.Pcsx2DataDirectory);
+            _gameGraphicsStatus.Text = report.Status switch
+            {
+                Pcsx2GameGraphicsAudit.State.OverridePresent =>
+                    $"Global {report.GlobalScale:0.##}×; saved game {report.GameScale:0.##}×" +
+                    (report.HasPossibleDifferentOverride ? " (different)" : " (same)"),
+                Pcsx2GameGraphicsAudit.State.UniqueGameIni =>
+                    $"{report.GlobalScale:0.##}× global; no game scale override",
+                Pcsx2GameGraphicsAudit.State.NoMatchingGameIni =>
+                    $"{report.GlobalScale:0.##}× global; game config unknown",
+                Pcsx2GameGraphicsAudit.State.MultipleCrcs =>
+                    "Multiple game CRC configs; cannot choose",
+                _ => "Not verified: " + report.Status
+            };
+        }
+        catch (Exception)
+        {
+            _gameGraphicsStatus.Text = "Could not inspect saved game graphics settings.";
+        }
+    }
+
+    private void ShowGameGraphicsAudit()
+    {
+        try
+        {
+            var report = Pcsx2GameGraphicsAudit.Inspect(Edited(), _store.Pcsx2DataDirectory);
+            RefreshGameGraphicsStatus();
+            MessageBox.Show(this,
+                "SAVED UNDERCOVER GRAPHICS CONFIGURATION\n\n" +
+                report.Summary + "\n\n" + report.NextStep + "\n\n" +
+                "This check cannot establish the current running game's executable CRC " +
+                "or prove that the saved configuration is active. It never changes game overrides.",
+                "Undercover graphics overrides (read-only)", MessageBoxButtons.OK,
+                report.HasPossibleDifferentOverride ||
+                report.Status == Pcsx2GameGraphicsAudit.State.MultipleCrcs ||
+                report.Status == Pcsx2GameGraphicsAudit.State.InvalidConfiguration
+                    ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        }
+        catch (Exception ex) { Error("Undercover graphics override check", ex); }
     }
 
     private void ShowBindings()
