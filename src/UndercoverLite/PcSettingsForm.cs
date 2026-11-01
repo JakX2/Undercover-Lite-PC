@@ -89,7 +89,7 @@ public sealed class PcSettingsForm : Form
         _tabs.Dock = DockStyle.Fill;
         _tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
         _tabs.SizeMode = TabSizeMode.Fixed;
-        _tabs.ItemSize = new Size(141, 38);
+        _tabs.ItemSize = new Size(122, 38);
         _tabs.Appearance = TabAppearance.Normal;
         _tabs.DrawItem += DrawTab;
         _tabs.Padding = new Point(6, 6);
@@ -132,10 +132,10 @@ public sealed class PcSettingsForm : Form
         var bounds = e.Bounds;
         using var bg = new SolidBrush(selected ? Surface : Background);
         using var text = new SolidBrush(selected ? Color.White : Muted);
+        using var tabFont = new Font("Segoe UI", 10, selected ? FontStyle.Bold : FontStyle.Regular);
         e.Graphics.FillRectangle(bg, bounds);
         TextRenderer.DrawText(e.Graphics, _tabs.TabPages[e.Index].Text,
-            new Font("Segoe UI", 10, selected ? FontStyle.Bold : FontStyle.Regular),
-            bounds, text.Color,
+            tabFont, bounds, text.Color,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
         if (selected)
         {
@@ -511,10 +511,10 @@ public sealed class PcSettingsForm : Form
             catch (Exception)
             {
                 // Avoid losing edits on unexpected read errors.
-                e.Cancel = true;
-                MessageBox.Show(this, "Saved preferences cannot be read. Please check your settings file.",
-                    "Cannot close safely", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
+                var discard = MessageBox.Show(this,
+                    "Saved preferences cannot be read. Leave the settings window without saving pending edits?",
+                    "Cannot inspect settings", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (discard != DialogResult.Yes) { e.Cancel = true; return; }
             }
         }
         base.OnFormClosing(e);
