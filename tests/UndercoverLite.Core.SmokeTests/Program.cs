@@ -1099,6 +1099,85 @@ internal static class Program
             Check(!exactDoctor.CopyableReport().Contains(exactData, StringComparison.OrdinalIgnoreCase) &&
                   !exactDoctor.CopyableReport().Contains(xorIso, StringComparison.OrdinalIgnoreCase),
                 "exact CRC diagnostics do not leak game image or emulator config paths");
+
+            // 0.17: only exact, existing SERIAL_CRC game INIs are writable.
+            // The test ISO has a verified word-XOR ELF CRC (newCrc).
+            var editorData = Path.Combine(temp, "game-graphics-editor");
+            var editorGlobal = Path.Combine(editorData, "PCSX2", "inis", "PCSX2.ini");
+            var editorFolder = Path.Combine(editorData, "PCSX2", "gamesettings");
+            Directory.CreateDirectory(Path.GetDirectoryName(editorGlobal)!);
+            Directory.CreateDirectory(editorFolder);
+            File.WriteAllText(editorGlobal,
+                "[Folders]\nGameSettings = gamesettings\n[EmuCore/GS]\nupscale_multiplier = 3.0\n");
+            var editorIni = Path.Combine(editorFolder, "SLUS-21801_" + newCrc.ToString("X8") + ".ini");
+            var unrelatedIni = Path.Combine(editorFolder, "SLUS-21801_DEADBEEF.ini");
+            File.WriteAllText(unrelatedIni, "[EmuCore/GS]\nupscale_multiplier = 5.0\n");
+            var editorSettings = new LauncherSettings { GameImage = xorIso, IsolatePcsx2Data = true };
+            ExpectThrows<FileNotFoundException>(() =>
+                Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData),
+                "game graphics editor never fabricates an exact per-game INI");
+            Check(!File.Exists(editorIni), "missing game INI remains missing after refusal");
+            var legacyEditorIni = Path.Combine(editorFolder, newCrc.ToString("X8") + ".ini");
+            File.WriteAllText(legacyEditorIni, "[EmuCore/GS]\nupscale_multiplier = 1.0\n");
+            ExpectThrows<FileNotFoundException>(() =>
+                Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData),
+                "CRC-only legacy fallback is not silently written");
+            File.WriteAllText(editorIni,
+                "[EmuCore]\nInputProfileName = UndercoverLite-DrivingFirst\n" +
+                "[EmuCore/GS]\nRenderer = 14\nupscale_multiplier = 2.0\n");
+            var preview = Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData);
+            Check(preview.Serial == "SLUS-21801" && preview.ElfCrc == newCrc.ToString("X8") &&
+                  preview.GameScale == 2f && preview.GlobalScale == 3f,
+                "game editor previews exact BOOT2-CRC-specific scale");
+            var editorBackup = Pcsx2GameGraphicsEditor.Apply(editorSettings, editorData, preview, 4);
+            Check(File.Exists(editorBackup) &&
+                  File.ReadAllText(editorBackup).Contains("upscale_multiplier = 2.0") &&
+                  File.ReadAllText(editorIni).Contains("upscale_multiplier = 4.0") &&
+                  File.ReadAllText(editorIni).Contains("Renderer = 14") &&
+                  File.ReadAllText(editorIni).Contains("InputProfileName = UndercoverLite-DrivingFirst") &&
+                  File.ReadAllText(editorGlobal).Contains("upscale_multiplier = 3.0") &&
+                  File.ReadAllText(unrelatedIni).Contains("upscale_multiplier = 5.0") &&
+                  File.ReadAllText(legacyEditorIni).Contains("upscale_multiplier = 1.0"),
+                "exact per-game editor preserves unrelated settings and keeps original backup");
+            Check(Pcsx2GameGraphicsEditor.Apply(editorSettings, editorData,
+                  Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData), 4) == "",
+                "identical per-game scale produces no backup or rewrite");
+            ExpectThrows<IOException>(() =>
+                Pcsx2GameGraphicsEditor.Apply(editorSettings, editorData, preview, 6),
+                "stale per-game snapshot cannot overwrite newer settings");
+            var changeGlobal = Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData);
+            File.AppendAllText(editorGlobal, "; concurrent edit\n");
+            ExpectThrows<IOException>(() =>
+                Pcsx2GameGraphicsEditor.Apply(editorSettings, editorData, changeGlobal, 6),
+                "changing the global PCSX2 config invalidates a pending per-game edit");
+            File.WriteAllText(editorIni, "[EmuCore/GS]\nupscale_multiplier = 2.0\nupscale_multiplier = 3.0\n");
+            ExpectThrows<InvalidDataException>(() =>
+                Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData),
+                "duplicate per-game scale values block editing");
+            File.WriteAllText(editorIni, "[EmuCore/GS]\nupscale_multiplier = 2.0\n");
+            File.WriteAllText(editorGlobal,
+                "[Folders]\nGameSettings = ../../redirected\n[EmuCore/GS]\nupscale_multiplier = 3.0\n");
+            ExpectThrows<InvalidDataException>(() =>
+                Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData),
+                "custom GameSettings directories block editing");
+            editorSettings.IsolatePcsx2Data = false;
+            ExpectThrows<InvalidOperationException>(() =>
+                Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData),
+                "shared PCSX2 profiles cannot use game graphics editor");
+            editorSettings.IsolatePcsx2Data = true;
+            File.WriteAllText(editorGlobal,
+                "[Folders]\nGameSettings = gamesettings\n[EmuCore/GS]\nupscale_multiplier = 3.0\n");
+            File.WriteAllText(editorIni, "[EmuCore]\nInputProfileName = Keyboard\n");
+            var missingScale = Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData);
+            var missingBackup = Pcsx2GameGraphicsEditor.Apply(editorSettings, editorData, missingScale, 2);
+            Check(File.Exists(missingBackup) &&
+                  File.ReadAllText(editorIni).Contains("[EmuCore/GS]\nupscale_multiplier = 2.0\n") &&
+                  File.ReadAllText(editorIni).Contains("InputProfileName = Keyboard"),
+                "existing game INI without graphics section can receive only the intended scale");
+            ExpectThrows<ArgumentOutOfRangeException>(() =>
+                Pcsx2GameGraphicsEditor.Apply(editorSettings, editorData,
+                    Pcsx2GameGraphicsEditor.Inspect(editorSettings, editorData), 8),
+                "unsupported per-game scale is rejected");
             Console.WriteLine($"All {_passed} smoke tests passed.");
             return 0;
         }
