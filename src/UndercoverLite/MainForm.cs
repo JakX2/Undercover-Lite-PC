@@ -43,7 +43,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Undercover Lite PC | Prototype 0.10";
+        Text = "Undercover Lite PC | Prototype 0.12 · PC Settings";
         MinimumSize = new Size(800, 730);
         Size = new Size(980, 765);
         StartPosition = FormStartPosition.CenterScreen;
@@ -80,7 +80,7 @@ public sealed class MainForm : Form
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         header.Controls.Add(NewLabel("UNDERCOVER LITE PC", 22, AccentColor, bold: true), 0, 0);
         header.Controls.Add(NewLabel("An emulation-backed PC launcher for Need for Speed Undercover (PS2)", 10, Color.White), 0, 1);
-        header.Controls.Add(NewLabel("Prototype 0.10  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
+        header.Controls.Add(NewLabel("Prototype 0.12  •  Bring your own PCSX2, game image and BIOS", 9, MutedColor), 0, 2);
         layout.Controls.Add(header, 0, 0);
 
         var paths = NewCard();
@@ -119,16 +119,19 @@ public sealed class MainForm : Form
         options.Controls.Add(optionTable);
         layout.Controls.Add(options, 0, 2);
 
-        var controls = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 5, RowCount = 1, Padding = new Padding(0, 12, 0, 9) };
+        var controls = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 6, RowCount = 1, Padding = new Padding(0, 12, 0, 9) };
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 15));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 10));
+        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 17));
         controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 19));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 12));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 21));
-        controls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26));
         var setupButton = NewButton("Configure PCSX2", secondary: true);
         setupButton.Click += (_, _) => OpenPcsx2Setup();
         var verifyButton = NewButton("Check image", secondary: true);
         verifyButton.Click += (_, _) => CheckImage();
+        var settingsButton = NewButton("PC Settings", secondary: true);
+        settingsButton.Click += (_, _) => OpenPcSettings();
         var saveButton = NewButton("Save", secondary: true);
         saveButton.Click += (_, _) => SaveSettings(showMessage: true);
         _launchButton.Text = "▶  Launch Undercover";
@@ -136,13 +139,14 @@ public sealed class MainForm : Form
         _launchButton.Click += (_, _) => LaunchGame();
         controls.Controls.Add(setupButton, 0, 0);
         controls.Controls.Add(verifyButton, 1, 0);
-        controls.Controls.Add(saveButton, 2, 0);
+        controls.Controls.Add(settingsButton, 2, 0);
+        controls.Controls.Add(saveButton, 3, 0);
         _sessionButton.Text = "Session menu";
         StyleButton(_sessionButton, secondary: true);
         _sessionButton.Enabled = false;
         _sessionButton.Click += (_, _) => ToggleCompanionMenu();
-        controls.Controls.Add(_sessionButton, 3, 0);
-        controls.Controls.Add(_launchButton, 4, 0);
+        controls.Controls.Add(_sessionButton, 4, 0);
+        controls.Controls.Add(_launchButton, 5, 0);
         layout.Controls.Add(controls, 0, 3);
 
         var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
@@ -386,6 +390,28 @@ public sealed class MainForm : Form
         var result = InspectSelectedGame();
         MessageBox.Show(this, result.Message, "Disc identification", MessageBoxButtons.OK,
             result.Recognition == DiscRecognition.Undercover ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+    }
+
+    private void OpenPcSettings()
+    {
+        try
+        {
+            // Pass both persisted and unsaved main-form values. The settings
+            // hub delta-merges into the most recent saved configuration; when
+            // cancelled, this main form's unsaved changes remain untouched.
+            using var hub = new PcSettingsForm(
+                _store, _store.Load(), ReadUi(), _sessionGate.IsRunning);
+            hub.ShowDialog(this);
+            if (hub.SavedChanges)
+            {
+                LoadSettings();
+                _status.Text = "PC Settings saved. New launch preferences will apply next time.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError("PC Settings could not be opened.", ex);
+        }
     }
 
     private void OpenPcsx2Setup()

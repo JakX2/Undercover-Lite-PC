@@ -185,3 +185,10 @@ The updated **Setup Doctor** also flags the known 0.7 false labels and reports w
 ## Proposed unified PC Settings screen
 
 A complete [six-tab PC Settings UI blueprint](docs/PC_SETTINGS_UI_BLUEPRINT.md) defines the exact Graphics, Controls, Audio, Interface, Advanced and Troubleshooting options, control types, helper text, backend readiness, safety rules and staged implementation plan. This is **a design specification only**, not a built in-game menu or newly enabled graphics/audio controls. The design separates existing Undercover Lite workflows from PCSX2 integration work and game-specific reverse engineering.
+
+
+## Prototype 0.12: Unified PC Settings window (UI-1)
+
+The Windows launcher now has a **PC Settings** button opening a real six-tab dark menu: Graphics, Controls, Audio, Interface, Advanced and Troubleshooting. It implements only settings that already have a functional backend, including fullscreen/windowed startup, fast boot, hiding the main emulator window, isolated PCSX2 data, companion hotkey, and executable/game/texture paths. Other options are clearly disabled or read-only until a tested PCSX2 adapter or a game-specific patch exists. Each page can open the relevant real input, glyph and diagnostic tools.
+
+Changes are merged into the most recently saved configuration **only for fields you edited**, preserving glyph paths and PC Input Lab preferences saved independently. This is an external launcher menu, **not an injected PS2 game menu**, and it does not silently rewrite PCSX2 graphics/audio settings. See [PC Settings UI-1 guide](docs/PC_SETTINGS_UI_1.md) and [full design blueprint](docs/PC_SETTINGS_UI_BLUEPRINT.md).
