@@ -192,3 +192,10 @@ A complete [six-tab PC Settings UI blueprint](docs/PC_SETTINGS_UI_BLUEPRINT.md) 
 The Windows launcher now has a **PC Settings** button opening a real six-tab dark menu: Graphics, Controls, Audio, Interface, Advanced and Troubleshooting. It implements only settings that already have a functional backend, including fullscreen/windowed startup, fast boot, hiding the main emulator window, isolated PCSX2 data, companion hotkey, and executable/game/texture paths. Other options are clearly disabled or read-only until a tested PCSX2 adapter or a game-specific patch exists. Each page can open the relevant real input, glyph and diagnostic tools.
 
 Changes are merged into the most recently saved configuration **only for fields you edited**, preserving glyph paths and PC Input Lab preferences saved independently. This is an external launcher menu, **not an injected PS2 game menu**, and it does not silently rewrite PCSX2 graphics/audio settings. See [PC Settings UI-1 guide](docs/PC_SETTINGS_UI_1.md) and [full design blueprint](docs/PC_SETTINGS_UI_BLUEPRINT.md).
+
+
+## Prototype 0.13: working PCSX2 internal resolution (UI-2)
+
+The six-tab PC Settings window now supports a **real internal-resolution selector** (Native 1×, 2×, 3×, 4×, 6×). It edits only the existing **isolated** PCSX2 2.8.2 setting **[EmuCore/GS] upscale_multiplier**, with an original-file backup, input validation and concurrent-edit checks. The Graphics tab has its own **Apply scale...** confirmation, separate from saving launcher preferences.
+
+**Important:** this edits the isolated emulator's **global** scale setting. A game-specific Undercover PCSX2 configuration based on the disc ELF CRC can override it. No game-specific overrides, original PS2 assets, BIOS, saves or other graphic settings are modified. Read [UI-2 graphics scale guide](docs/GRAPHICS_SCALE_UI_2.md).
